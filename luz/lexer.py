@@ -133,6 +133,9 @@ class Lexer:
             elif self.current_char == ',':
                 tokens.append(Token(TokenType.COMMA))
                 self.advance()
+            elif self.current_char == ':':
+                tokens.append(Token(TokenType.COLON))
+                self.advance()
             elif self.current_char == '[':
                 tokens.append(Token(TokenType.LBRACKET))
                 self.advance()

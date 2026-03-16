@@ -55,7 +55,10 @@ class Interpreter:
             'listen': self.builtin_listen,
             'len': self.builtin_len,
             'append': self.builtin_append,
-            'pop': self.builtin_pop
+            'pop': self.builtin_pop,
+            'keys': self.builtin_keys,
+            'values': self.builtin_values,
+            'remove': self.builtin_remove
         }
 
     def execute_block(self, block, env):
@@ -95,31 +98,47 @@ class Interpreter:
     def visit_ListNode(self, node):
         return [self.visit(element) for element in node.elements]
 
-    def visit_ListAccessNode(self, node):
-        list_obj = self.visit(node.list_node)
+    def visit_DictNode(self, node):
+        res = {}
+        for key_node, value_node in node.pairs:
+            key = self.visit(key_node)
+            value = self.visit(value_node)
+            res[key] = value
+        return res
+
+    def visit_IndexAccessNode(self, node):
+        base = self.visit(node.base_node)
         index = self.visit(node.index_node)
         
-        if not isinstance(list_obj, list):
-            raise Exception("El objeto no es una lista")
-        
-        try:
-            return list_obj[int(index)]
-        except IndexError:
-            raise Exception(f"Índice {index} fuera de rango")
+        if isinstance(base, list):
+            try:
+                return base[int(index)]
+            except IndexError:
+                raise Exception(f"Índice {index} fuera de rango")
+        elif isinstance(base, dict):
+            try:
+                return base[index]
+            except KeyError:
+                raise Exception(f"Clave '{index}' no encontrada en el diccionario")
+        else:
+            raise Exception("El objeto no soporta indexación")
 
-    def visit_ListAssignNode(self, node):
-        list_obj = self.visit(node.list_node)
+    def visit_IndexAssignNode(self, node):
+        base = self.visit(node.base_node)
         index = self.visit(node.index_node)
         value = self.visit(node.value_node)
         
-        if not isinstance(list_obj, list):
-            raise Exception("El objeto no es una lista")
-        
-        try:
-            list_obj[int(index)] = value
+        if isinstance(base, list):
+            try:
+                base[int(index)] = value
+                return value
+            except IndexError:
+                raise Exception(f"Índice {index} fuera de rango")
+        elif isinstance(base, dict):
+            base[index] = value
             return value
-        except IndexError:
-            raise Exception(f"Índice {index} fuera de rango")
+        else:
+            raise Exception("El objeto no soporta asignación por índice")
 
     def visit_UnaryOpNode(self, node):
         res = self.visit(node.node)
@@ -164,13 +183,21 @@ class Interpreter:
         elif node.op_token.type == TokenType.NE:
             return left != right
         elif node.op_token.type == TokenType.LT:
-            return left < right
+            if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+                return left < right
+            raise Exception("Comparación '<' solo soportada entre números")
         elif node.op_token.type == TokenType.GT:
-            return left > right
+            if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+                return left > right
+            raise Exception("Comparación '>' solo soportada entre números")
         elif node.op_token.type == TokenType.LTE:
-            return left <= right
+            if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+                return left <= right
+            raise Exception("Comparación '<=' solo soportada entre números")
         elif node.op_token.type == TokenType.GTE:
-            return left >= right
+            if isinstance(left, (int, float)) and isinstance(right, (int, float)):
+                return left >= right
+            raise Exception("Comparación '>=' solo soportada entre números")
         elif node.op_token.type == TokenType.AND:
             return left and right
         elif node.op_token.type == TokenType.OR:
@@ -274,3 +301,18 @@ class Interpreter:
             return list_obj.pop(int(index))
         except IndexError:
             raise Exception("Índice fuera de rango en pop()")
+
+    def builtin_keys(self, dict_obj):
+        if not isinstance(dict_obj, dict):
+            raise Exception("keys() requiere un diccionario")
+        return list(dict_obj.keys())
+
+    def builtin_values(self, dict_obj):
+        if not isinstance(dict_obj, dict):
+            raise Exception("values() requiere un diccionario")
+        return list(dict_obj.values())
+
+    def builtin_remove(self, dict_obj, key):
+        if not isinstance(dict_obj, dict):
+            raise Exception("remove() requiere un diccionario")
+        return dict_obj.pop(key, None)

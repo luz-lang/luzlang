@@ -31,6 +31,7 @@ class TokenType(Enum):
     RETURN = auto()
     STRING = auto()
     COMMA = auto()       # ,
+    COLON = auto()       # :
     LBRACKET = auto()    # [
     RBRACKET = auto()    # ]
     LBRACE = auto()      # {

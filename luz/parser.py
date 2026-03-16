@@ -20,18 +20,23 @@ class ListNode:
         self.elements = elements
     def __repr__(self): return f"{self.elements}"
 
-class ListAccessNode:
-    def __init__(self, list_node, index_node):
-        self.list_node = list_node
-        self.index_node = index_node
-    def __repr__(self): return f"{self.list_node}[{self.index_node}]"
+class DictNode:
+    def __init__(self, pairs):
+        self.pairs = pairs # List of (key_node, value_node)
+    def __repr__(self): return f"{{{self.pairs}}}"
 
-class ListAssignNode:
-    def __init__(self, list_node, index_node, value_node):
-        self.list_node = list_node
+class IndexAccessNode:
+    def __init__(self, base_node, index_node):
+        self.base_node = base_node
+        self.index_node = index_node
+    def __repr__(self): return f"{self.base_node}[{self.index_node}]"
+
+class IndexAssignNode:
+    def __init__(self, base_node, index_node, value_node):
+        self.base_node = base_node
         self.index_node = index_node
         self.value_node = value_node
-    def __repr__(self): return f"({self.list_node}[{self.index_node}] = {self.value_node})"
+    def __repr__(self): return f"({self.base_node}[{self.index_node}] = {self.value_node})"
 
 class UnaryOpNode:
     def __init__(self, op_token, node):
@@ -131,7 +136,7 @@ class Parser:
             return ReturnNode(expr)
         
         if self.current_token.type == TokenType.IDENTIFIER:
-            # Lookahead for assignment or indexing assignment
+            # Lookahead for assignment
             next_token = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
             if next_token and next_token.type == TokenType.ASSIGN:
                 var_name = self.current_token
@@ -139,18 +144,14 @@ class Parser:
                 self.advance() # =
                 expr = self.expr()
                 return VarAssignNode(var_name, expr)
-            elif next_token and next_token.type == TokenType.LBRACKET:
-                # Potential list indexing assignment: lista[0] = 5
-                # We need more lookahead or a better way. Let's try parsing a factor and see if it's a ListAccessNode.
-                pass
 
         node = self.expr()
         
-        # Check for indexing assignment: lista[0] = 5
-        if isinstance(node, ListAccessNode) and self.current_token.type == TokenType.ASSIGN:
+        # Check for indexing assignment: lista[0] = 5 or dict["key"] = val
+        if isinstance(node, IndexAccessNode) and self.current_token.type == TokenType.ASSIGN:
             self.advance() # =
             value = self.expr()
-            return ListAssignNode(node.list_node, node.index_node, value)
+            return IndexAssignNode(node.base_node, node.index_node, value)
             
         return node
 
@@ -309,6 +310,8 @@ class Parser:
             node = BooleanNode(token)
         elif token.type == TokenType.LBRACKET:
             node = self.list_literal()
+        elif token.type == TokenType.LBRACE:
+            node = self.dict_literal()
         elif token.type == TokenType.IDENTIFIER:
             node = self.identifier_expr()
         elif token.type == TokenType.LPAREN:
@@ -327,7 +330,7 @@ class Parser:
             if self.current_token.type != TokenType.RBRACKET:
                 raise Exception("Esperado ']'")
             self.advance()
-            node = ListAccessNode(node, index)
+            node = IndexAccessNode(node, index)
             
         return node
 
@@ -363,6 +366,31 @@ class Parser:
             raise Exception("Esperado ']'")
         self.advance()
         return ListNode(elements)
+
+    def dict_literal(self):
+        self.advance() # {
+        pairs = []
+        if self.current_token.type != TokenType.RBRACE:
+            key = self.expr()
+            if self.current_token.type != TokenType.COLON:
+                raise Exception("Esperado ':' después de la clave en el diccionario")
+            self.advance()
+            value = self.expr()
+            pairs.append((key, value))
+            
+            while self.current_token.type == TokenType.COMMA:
+                self.advance()
+                key = self.expr()
+                if self.current_token.type != TokenType.COLON:
+                    raise Exception("Esperado ':' después de la clave en el diccionario")
+                self.advance()
+                value = self.expr()
+                pairs.append((key, value))
+        
+        if self.current_token.type != TokenType.RBRACE:
+            raise Exception("Esperado '}'")
+        self.advance()
+        return DictNode(pairs)
 
     def bin_op(self, func, ops):
         left = func()

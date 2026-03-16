@@ -100,6 +100,31 @@ def test_lists():
     assert interpreter.global_env.lookup('ultimo') == 40.0
     print("Listas: OK")
 
+def test_dicts():
+    print("Probando diccionarios...")
+    interpreter = Interpreter()
+    
+    # Literales y acceso
+    code = 'd = {"nombre": "Eloi", "edad": 25} res = d["nombre"]'
+    interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
+    assert interpreter.global_env.lookup('res') == "Eloi"
+    
+    # Modificación e inserción
+    code = 'd["edad"] = 26 d["ciudad"] = "BCN"'
+    interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
+    d = interpreter.global_env.lookup('d')
+    assert d["edad"] == 26.0
+    assert d["ciudad"] == "BCN"
+    
+    # Built-ins
+    code = 'ks = keys(d) tam = len(d)'
+    interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
+    assert interpreter.global_env.lookup('tam') == 3.0
+    # keys() devuelve una lista, el orden puede variar pero el contenido no
+    ks = interpreter.global_env.lookup('ks')
+    assert "nombre" in ks and "edad" in ks and "ciudad" in ks
+    print("Diccionarios: OK")
+
 def run_all():
     print("=== INICIANDO SUITE DE PRUEBAS DE LUZ ===\n")
     try:
@@ -109,6 +134,7 @@ def run_all():
         test_logical_and_booleans()
         test_functions()
         test_lists()
+        test_dicts()
         print("\n=== ¡TODAS LAS PRUEBAS PASARON CON ÉXITO! ===")
     except Exception as e:
         print(f"\nERROR EN LAS PRUEBAS: {e}")
