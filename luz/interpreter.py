@@ -52,7 +52,10 @@ class Interpreter:
         self.current_env = self.global_env
         self.builtins = {
             'write': self.builtin_write,
-            'listen': self.builtin_listen
+            'listen': self.builtin_listen,
+            'len': self.builtin_len,
+            'append': self.builtin_append,
+            'pop': self.builtin_pop
         }
 
     def execute_block(self, block, env):
@@ -88,6 +91,35 @@ class Interpreter:
 
     def visit_BooleanNode(self, node):
         return True if node.token.type == TokenType.TRUE else False
+
+    def visit_ListNode(self, node):
+        return [self.visit(element) for element in node.elements]
+
+    def visit_ListAccessNode(self, node):
+        list_obj = self.visit(node.list_node)
+        index = self.visit(node.index_node)
+        
+        if not isinstance(list_obj, list):
+            raise Exception("El objeto no es una lista")
+        
+        try:
+            return list_obj[int(index)]
+        except IndexError:
+            raise Exception(f"Índice {index} fuera de rango")
+
+    def visit_ListAssignNode(self, node):
+        list_obj = self.visit(node.list_node)
+        index = self.visit(node.index_node)
+        value = self.visit(node.value_node)
+        
+        if not isinstance(list_obj, list):
+            raise Exception("El objeto no es una lista")
+        
+        try:
+            list_obj[int(index)] = value
+            return value
+        except IndexError:
+            raise Exception(f"Índice {index} fuera de rango")
 
     def visit_UnaryOpNode(self, node):
         res = self.visit(node.node)
@@ -220,3 +252,25 @@ class Interpreter:
             return float(res)
         except ValueError:
             return res
+
+    def builtin_len(self, obj):
+        try:
+            return float(len(obj))
+        except:
+            raise Exception("El objeto no tiene longitud")
+
+    def builtin_append(self, list_obj, element):
+        if not isinstance(list_obj, list):
+            raise Exception("append() requiere una lista como primer argumento")
+        list_obj.append(element)
+        return None
+
+    def builtin_pop(self, list_obj, index=None):
+        if not isinstance(list_obj, list):
+            raise Exception("pop() requiere una lista como primer argumento")
+        try:
+            if index is None:
+                return list_obj.pop()
+            return list_obj.pop(int(index))
+        except IndexError:
+            raise Exception("Índice fuera de rango en pop()")

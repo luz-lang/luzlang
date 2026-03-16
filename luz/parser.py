@@ -15,6 +15,24 @@ class BooleanNode:
         self.token = token
     def __repr__(self): return f"{self.token.type.name.lower()}"
 
+class ListNode:
+    def __init__(self, elements):
+        self.elements = elements
+    def __repr__(self): return f"{self.elements}"
+
+class ListAccessNode:
+    def __init__(self, list_node, index_node):
+        self.list_node = list_node
+        self.index_node = index_node
+    def __repr__(self): return f"{self.list_node}[{self.index_node}]"
+
+class ListAssignNode:
+    def __init__(self, list_node, index_node, value_node):
+        self.list_node = list_node
+        self.index_node = index_node
+        self.value_node = value_node
+    def __repr__(self): return f"({self.list_node}[{self.index_node}] = {self.value_node})"
+
 class UnaryOpNode:
     def __init__(self, op_token, node):
         self.op_token = op_token
@@ -113,7 +131,7 @@ class Parser:
             return ReturnNode(expr)
         
         if self.current_token.type == TokenType.IDENTIFIER:
-            # Lookahead for assignment
+            # Lookahead for assignment or indexing assignment
             next_token = self.tokens[self.pos + 1] if self.pos + 1 < len(self.tokens) else None
             if next_token and next_token.type == TokenType.ASSIGN:
                 var_name = self.current_token
@@ -121,8 +139,20 @@ class Parser:
                 self.advance() # =
                 expr = self.expr()
                 return VarAssignNode(var_name, expr)
+            elif next_token and next_token.type == TokenType.LBRACKET:
+                # Potential list indexing assignment: lista[0] = 5
+                # We need more lookahead or a better way. Let's try parsing a factor and see if it's a ListAccessNode.
+                pass
+
+        node = self.expr()
         
-        return self.expr()
+        # Check for indexing assignment: lista[0] = 5
+        if isinstance(node, ListAccessNode) and self.current_token.type == TokenType.ASSIGN:
+            self.advance() # =
+            value = self.expr()
+            return ListAssignNode(node.list_node, node.index_node, value)
+            
+        return node
 
     def func_def(self):
         self.advance() # function
@@ -266,40 +296,73 @@ class Parser:
 
     def factor(self):
         token = self.current_token
+        node = None
+        
         if token.type == TokenType.NUMBER:
             self.advance()
-            return NumberNode(token)
+            node = NumberNode(token)
         elif token.type == TokenType.STRING:
             self.advance()
-            return StringNode(token)
+            node = StringNode(token)
         elif token.type in (TokenType.TRUE, TokenType.FALSE):
             self.advance()
-            return BooleanNode(token)
+            node = BooleanNode(token)
+        elif token.type == TokenType.LBRACKET:
+            node = self.list_literal()
         elif token.type == TokenType.IDENTIFIER:
-            func_name = token
-            self.advance()
-            if self.current_token.type == TokenType.LPAREN:
-                self.advance()
-                args = []
-                if self.current_token.type != TokenType.RPAREN:
-                    args.append(self.expr())
-                    while self.current_token.type == TokenType.COMMA:
-                        self.advance()
-                        args.append(self.expr())
-                
-                if self.current_token.type != TokenType.RPAREN:
-                    raise Exception("Esperado ',' o ')'")
-                self.advance()
-                return CallNode(func_name, args)
-            else:
-                return VarAccessNode(func_name)
+            node = self.identifier_expr()
         elif token.type == TokenType.LPAREN:
             self.advance()
-            expr = self.expr()
-            if self.current_token.type == TokenType.RPAREN:
+            node = self.expr()
+            if self.current_token.type != TokenType.RPAREN:
+                 raise Exception("Esperado ')'")
+            self.advance()
+        else:
+            raise Exception(f"Sintaxis inválida en token: {token}")
+
+        # Post-factor processing (indexing, etc.)
+        while self.current_token.type == TokenType.LBRACKET:
+            self.advance()
+            index = self.expr()
+            if self.current_token.type != TokenType.RBRACKET:
+                raise Exception("Esperado ']'")
+            self.advance()
+            node = ListAccessNode(node, index)
+            
+        return node
+
+    def identifier_expr(self):
+        token = self.current_token
+        self.advance()
+        if self.current_token.type == TokenType.LPAREN:
+            self.advance()
+            args = []
+            if self.current_token.type != TokenType.RPAREN:
+                args.append(self.expr())
+                while self.current_token.type == TokenType.COMMA:
+                    self.advance()
+                    args.append(self.expr())
+            
+            if self.current_token.type != TokenType.RPAREN:
+                raise Exception("Esperado ',' o ')'")
+            self.advance()
+            return CallNode(token, args)
+        else:
+            return VarAccessNode(token)
+
+    def list_literal(self):
+        self.advance() # [
+        elements = []
+        if self.current_token.type != TokenType.RBRACKET:
+            elements.append(self.expr())
+            while self.current_token.type == TokenType.COMMA:
                 self.advance()
-                return expr
-        raise Exception(f"Sintaxis inválida en token: {token}")
+                elements.append(self.expr())
+        
+        if self.current_token.type != TokenType.RBRACKET:
+            raise Exception("Esperado ']'")
+        self.advance()
+        return ListNode(elements)
 
     def bin_op(self, func, ops):
         left = func()

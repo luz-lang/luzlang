@@ -22,12 +22,12 @@ def test_variables_and_strings():
     # Variables y concatenación
     code = 'a = "hola" b = " mundo" res = a + b'
     interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
-    assert interpreter.symbol_table['res'] == "hola mundo"
+    assert interpreter.global_env.lookup('res') == "hola mundo"
     
     # Multiplicación de strings
     code = 'risa = "ja" * 3'
     interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
-    assert interpreter.symbol_table['risa'] == "jajaja"
+    assert interpreter.global_env.lookup('risa') == "jajaja"
     print("Variables y strings: OK")
 
 def test_control_flow():
@@ -37,17 +37,17 @@ def test_control_flow():
     # If/Else
     code = 'x = 10 if x > 5 { res = "si" } else { res = "no" }'
     interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
-    assert interpreter.symbol_table['res'] == "si"
+    assert interpreter.global_env.lookup('res') == "si"
     
     # While
     code = 'i = 0 while i < 5 { i = i + 1 }'
     interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
-    assert interpreter.symbol_table['i'] == 5.0
+    assert interpreter.global_env.lookup('i') == 5.0
     
     # For
     code = 'total = 0 for k = 1 to 5 { total = total + k }'
     interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
-    assert interpreter.symbol_table['total'] == 15.0
+    assert interpreter.global_env.lookup('total') == 15.0
     print("Flujo de control: OK")
 
 def test_logical_and_booleans():
@@ -76,8 +76,29 @@ def test_functions():
     res = factorial(5)
     '''
     interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
-    assert interpreter.symbol_table['res'] == 120.0
+    assert interpreter.global_env.lookup('res') == 120.0
     print("Funciones y recursividad: OK")
+
+def test_lists():
+    print("Probando listas...")
+    interpreter = Interpreter()
+    
+    # Literales y acceso
+    code = 'l = [10, "hola", true] res = l[0] + 5'
+    interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
+    assert interpreter.global_env.lookup('res') == 15.0
+    
+    # Modificación
+    code = 'l[1] = "mundo" val = l[1]'
+    interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
+    assert interpreter.global_env.lookup('val') == "mundo"
+    
+    # Built-ins
+    code = 'append(l, 40) tam = len(l) ultimo = pop(l)'
+    interpreter.visit(Parser(Lexer(code).get_tokens()).parse())
+    assert interpreter.global_env.lookup('tam') == 4.0
+    assert interpreter.global_env.lookup('ultimo') == 40.0
+    print("Listas: OK")
 
 def run_all():
     print("=== INICIANDO SUITE DE PRUEBAS DE LUZ ===\n")
@@ -87,9 +108,12 @@ def run_all():
         test_control_flow()
         test_logical_and_booleans()
         test_functions()
+        test_lists()
         print("\n=== ¡TODAS LAS PRUEBAS PASARON CON ÉXITO! ===")
     except Exception as e:
         print(f"\nERROR EN LAS PRUEBAS: {e}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
