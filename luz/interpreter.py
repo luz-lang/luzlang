@@ -161,7 +161,7 @@ class Interpreter:
         try:
             return self.visit(node.try_block)
         except LuzError as e:
-            if isinstance(e, ReturnException):
+            if isinstance(e, (ReturnException, BreakException, ContinueException)):
                 raise e
             
             previous_env = self.current_env
@@ -303,7 +303,12 @@ class Interpreter:
 
     def visit_WhileNode(self, node):
         while self.visit(node.condition_node):
-            self.visit(node.block)
+            try:
+                self.visit(node.block)
+            except BreakException:
+                break
+            except ContinueException:
+                continue
         return None
 
     def visit_ForNode(self, node):
@@ -320,10 +325,24 @@ class Interpreter:
         try:
             while i <= end_value:
                 self.current_env.define(var_name, i)
-                self.visit(node.block)
+                try:
+                    self.visit(node.block)
+                except BreakException:
+                    break
+                except ContinueException:
+                    pass
                 i += 1
         finally:
             self.current_env = previous_env
+        return None
+
+    def visit_BreakNode(self, node):
+        raise BreakException()
+
+    def visit_ContinueNode(self, node):
+        raise ContinueException()
+
+    def visit_PassNode(self, node):
         return None
 
     def visit_FuncDefNode(self, node):

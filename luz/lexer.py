@@ -21,6 +21,9 @@ class Lexer:
         'attempt': TokenType.ATTEMPT,
         'rescue': TokenType.RESCUE,
         'alert': TokenType.ALERT,
+        'break': TokenType.BREAK,
+        'continue': TokenType.CONTINUE,
+        'pass': TokenType.PASS,
     }
 
     def __init__(self, text):

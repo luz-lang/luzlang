@@ -34,6 +34,9 @@ class TokenType(Enum):
     ATTEMPT = auto()
     RESCUE = auto()
     ALERT = auto()
+    BREAK = auto()
+    CONTINUE = auto()
+    PASS = auto()
     STRING = auto()
     COMMA = auto()       # ,
     COLON = auto()       # :

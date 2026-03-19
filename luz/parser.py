@@ -107,6 +107,15 @@ class AlertNode:
     def __init__(self, expression_node):
         self.expression_node = expression_node
 
+class BreakNode:
+    def __repr__(self): return "break"
+
+class ContinueNode:
+    def __repr__(self): return "continue"
+
+class PassNode:
+    def __repr__(self): return "pass"
+
 class CallNode:
     def __init__(self, func_name_token, arguments):
         self.func_name_token = func_name_token
@@ -175,6 +184,18 @@ class Parser:
             self.advance()
             expr = self.expr()
             return AlertNode(expr)
+
+        if self.current_token.type == TokenType.BREAK:
+            self.advance()
+            return BreakNode()
+
+        if self.current_token.type == TokenType.CONTINUE:
+            self.advance()
+            return ContinueNode()
+
+        if self.current_token.type == TokenType.PASS:
+            self.advance()
+            return PassNode()
         
         if self.current_token.type == TokenType.IDENTIFIER:
             # Lookahead for assignment

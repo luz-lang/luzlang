@@ -4,11 +4,17 @@ class LuzError(Exception):
         self.message = message
         super().__init__(message)
 
-# Internal signal for return values (not a fault)
+# Internal signals for control flow (not faults)
 class ReturnException(LuzError):
     def __init__(self, value):
         self.value = value
         super().__init__("Return signal")
+
+class BreakException(LuzError):
+    def __init__(self): super().__init__("Break signal")
+
+class ContinueException(LuzError):
+    def __init__(self): super().__init__("Continue signal")
 
 # --- 1. Syntax & Parsing Faults ---
 class SyntaxFault(LuzError): pass
