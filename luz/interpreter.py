@@ -63,6 +63,8 @@ class Interpreter:
             'values': self.builtin_values,
             'remove': self.builtin_remove,
             'to_num': self.builtin_to_num,
+            'to_int': self.builtin_to_int,
+            'to_float': self.builtin_to_float,
             'to_str': self.builtin_to_str,
             'to_bool': self.builtin_to_bool
         }
@@ -117,12 +119,12 @@ class Interpreter:
         index = self.visit(node.index_node)
         
         if isinstance(base, list):
+            if not isinstance(index, int):
+                raise TypeViolationFault(f"List index must be an integer, not {type(index).__name__}")
             try:
-                return base[int(index)]
+                return base[index]
             except IndexError:
                 raise IndexFault(f"Index {index} is out of range for list of size {len(base)}")
-            except (ValueError, TypeError):
-                raise TypeViolationFault(f"List index must be an integer, not {type(index).__name__}")
         elif isinstance(base, dict):
             try:
                 return base[index]
@@ -139,13 +141,13 @@ class Interpreter:
         value = self.visit(node.value_node)
         
         if isinstance(base, list):
+            if not isinstance(index, int):
+                raise TypeViolationFault(f"List index must be an integer, not {type(index).__name__}")
             try:
-                base[int(index)] = value
+                base[index] = value
                 return value
             except IndexError:
                 raise IndexFault(f"Index {index} is out of range")
-            except (ValueError, TypeError):
-                raise TypeViolationFault(f"List index must be an integer")
         elif isinstance(base, dict):
             try:
                 base[index] = value
@@ -186,8 +188,6 @@ class Interpreter:
 
     def visit_ImportNode(self, node):
         file_path = node.file_path_token.value
-        
-        # Absolute path resolution (simple version)
         abs_path = os.path.abspath(file_path)
         
         if abs_path in self.imported_files:
@@ -209,7 +209,6 @@ class Interpreter:
             parser = Parser(tokens)
             ast = parser.parse()
             
-            # Execute in global environment
             temp_env = self.current_env
             self.current_env = self.global_env
             try:
@@ -255,7 +254,7 @@ class Interpreter:
             except TypeError:
                 raise IllegalOperationFault(f"Unsupported operand types for '-': {type(left).__name__} and {type(right).__name__}")
         elif node.op_token.type == TokenType.MUL:
-            if isinstance(left, str) and isinstance(right, float):
+            if isinstance(left, str) and isinstance(right, (int, float)):
                 return left * int(right)
             try:
                 return left * right
@@ -265,7 +264,8 @@ class Interpreter:
             if right == 0:
                 raise ZeroDivisionFault("Division by zero is not allowed")
             try:
-                return left / right
+                # In Luz, / is always float division (following Python 3)
+                return float(left) / float(right)
             except TypeError:
                 raise IllegalOperationFault(f"Unsupported operand types for '/': {type(left).__name__} and {type(right).__name__}")
         elif node.op_token.type == TokenType.EE:
@@ -366,13 +366,15 @@ class Interpreter:
     def builtin_listen(self, prompt=""):
         res = input(prompt)
         try:
-            return float(res)
+            if '.' in res:
+                return float(res)
+            return int(res)
         except ValueError:
             return res
 
     def builtin_len(self, obj):
         try:
-            return float(len(obj))
+            return int(len(obj))
         except:
             raise TypeViolationFault(f"Object of type '{type(obj).__name__}' has no length")
 
@@ -388,11 +390,11 @@ class Interpreter:
         try:
             if index is None:
                 return list_obj.pop()
-            return list_obj.pop(int(index))
+            if not isinstance(index, int):
+                raise TypeViolationFault("Index for pop() must be an integer")
+            return list_obj.pop(index)
         except IndexError:
             raise IndexFault("Index out of range in pop() operation")
-        except (ValueError, TypeError):
-            raise TypeViolationFault("Index for pop() must be an integer")
 
     def builtin_keys(self, dict_obj):
         if not isinstance(dict_obj, dict):
@@ -416,9 +418,23 @@ class Interpreter:
 
     def builtin_to_num(self, value):
         try:
+            if isinstance(value, str) and '.' not in value:
+                return int(value)
             return float(value)
         except (ValueError, TypeError):
-            raise CastFault(f"Cannot cast value '{value}' of type '{type(value).__name__}' to Number")
+            raise CastFault(f"Cannot cast value '{value}' to Number")
+
+    def builtin_to_int(self, value):
+        try:
+            return int(float(value))
+        except (ValueError, TypeError):
+            raise CastFault(f"Cannot cast value '{value}' to Int")
+
+    def builtin_to_float(self, value):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            raise CastFault(f"Cannot cast value '{value}' to Float")
 
     def builtin_to_str(self, value):
         if isinstance(value, bool):

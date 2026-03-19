@@ -384,7 +384,7 @@ class Parser:
         token = self.current_token
         node = None
         
-        if token.type == TokenType.NUMBER:
+        if token.type in (TokenType.INT, TokenType.FLOAT):
             self.advance()
             node = NumberNode(token)
         elif token.type == TokenType.STRING:

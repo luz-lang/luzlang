@@ -1,7 +1,8 @@
 from enum import Enum, auto
 
 class TokenType(Enum):
-    NUMBER = auto()
+    INT = auto()
+    FLOAT = auto()
     PLUS = auto()
     MINUS = auto()
     MUL = auto()

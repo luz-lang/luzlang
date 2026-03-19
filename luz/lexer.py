@@ -51,7 +51,10 @@ class Lexer:
             num_str += self.current_char
             self.advance()
         
-        return Token(TokenType.NUMBER, float(num_str))
+        if dot_count == 0:
+            return Token(TokenType.INT, int(num_str))
+        else:
+            return Token(TokenType.FLOAT, float(num_str))
 
     def make_identifier(self):
         id_str = ''
