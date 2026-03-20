@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+    branches: ["master"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python run_tests.py
+
+      - name: Run examples (non-interactive)
+        run: |
+          python main.py examples/02_fizzbuzz.luz
+          python main.py examples/03_fibonacci.luz
+          python main.py examples/04_bubble_sort.luz
+          python main.py examples/06_strings.luz
+          python main.py examples/08_primes.luz
+          python main.py examples/09_collections.luz
+          python main.py examples/10_error_handling.luz
