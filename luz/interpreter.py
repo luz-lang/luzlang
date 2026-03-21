@@ -253,6 +253,17 @@ class Interpreter:
             'count': self.builtin_count,
             'typeof': self.builtin_typeof,
             'instanceof': self.builtin_instanceof,
+            'abs': self.builtin_abs,
+            'sqrt': self.builtin_sqrt,
+            'floor': self.builtin_floor,
+            'ceil': self.builtin_ceil,
+            'round': self.builtin_round,
+            'clamp': self.builtin_clamp,
+            'max': self.builtin_max,
+            'min': self.builtin_min,
+            'sign': self.builtin_sign,
+            'odd': self.builtin_odd,
+            'even': self.builtin_even,
         }
 
     # execute_block() runs a list of statements inside a given environment.
@@ -1118,3 +1129,82 @@ class Interpreter:
                 return True
             cls = cls.parent
         return False
+
+    # ── Math built-ins ────────────────────────────────────────────────────────
+    import math as _math
+
+    def _require_num(self, value, fname):
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            raise ArgumentFault(f"{fname}() requires a number, got '{type(value).__name__}'")
+
+    def builtin_abs(self, x):
+        self._require_num(x, 'abs')
+        return abs(x)
+
+    def builtin_sqrt(self, x):
+        self._require_num(x, 'sqrt')
+        if x < 0:
+            raise NumericFault("sqrt() cannot be applied to a negative number")
+        import math
+        return math.sqrt(x)
+
+    def builtin_floor(self, x):
+        self._require_num(x, 'floor')
+        import math
+        return int(math.floor(x))
+
+    def builtin_ceil(self, x):
+        self._require_num(x, 'ceil')
+        import math
+        return int(math.ceil(x))
+
+    # round(x) rounds to nearest integer; round(x, digits) keeps decimal places.
+    def builtin_round(self, x, digits=0):
+        self._require_num(x, 'round')
+        return round(x, int(digits))
+
+    # clamp(x, low, high) forces x into the [low, high] range.
+    # Descriptive and not a Python builtin — handy for game logic, UI, etc.
+    def builtin_clamp(self, x, low, high):
+        self._require_num(x, 'clamp')
+        self._require_num(low, 'clamp')
+        self._require_num(high, 'clamp')
+        return max(low, min(x, high))
+
+    # max(a, b) or max(list) — returns the largest value.
+    def builtin_max(self, *args):
+        if len(args) == 1 and isinstance(args[0], list):
+            lst = args[0]
+            if not lst:
+                raise ArgumentFault("max() cannot be applied to an empty list")
+            return max(lst)
+        if len(args) < 2:
+            raise ArityFault("max() requires at least two arguments or one list")
+        return max(args)
+
+    # min(a, b) or min(list) — returns the smallest value.
+    def builtin_min(self, *args):
+        if len(args) == 1 and isinstance(args[0], list):
+            lst = args[0]
+            if not lst:
+                raise ArgumentFault("min() cannot be applied to an empty list")
+            return min(lst)
+        if len(args) < 2:
+            raise ArityFault("min() requires at least two arguments or one list")
+        return min(args)
+
+    # sign(x) returns -1, 0, or 1 depending on the sign of x.
+    def builtin_sign(self, x):
+        self._require_num(x, 'sign')
+        if x > 0: return 1
+        if x < 0: return -1
+        return 0
+
+    # odd(x) and even(x) — boolean parity checks, more readable than x % 2 == 1.
+    def builtin_odd(self, x):
+        self._require_num(x, 'odd')
+        return int(x) % 2 != 0
+
+    def builtin_even(self, x):
+        self._require_num(x, 'even')
+        return int(x) % 2 == 0
