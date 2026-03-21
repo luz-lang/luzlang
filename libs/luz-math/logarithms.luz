@@ -1,0 +1,29 @@
+# logarithms.luz — ln, log2, log10, log(x, base)
+# ln uses the atanh series: ln(x) = 2 * sum((x-1)/(x+1))^(2n+1) / (2n+1)
+
+function ln(x) {
+    if x <= 0 { alert "ln: x must be > 0" }
+    y = (x - 1) / (x + 1)
+    y2 = y * y
+    result = 0
+    term = y
+    n = 0
+    while n < 50 {
+        result = result + term / (2 * n + 1)
+        term = term * y2
+        n = n + 1
+    }
+    return result * 2
+}
+
+function log2(x) {
+    return ln(x) / ln(2)
+}
+
+function log10(x) {
+    return ln(x) / ln(10)
+}
+
+function log(x, base) {
+    return ln(x) / ln(base)
+}

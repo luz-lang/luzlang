@@ -1,0 +1,10 @@
+# math.luz — Luz Math Library v1.0.0
+# Entry point: imports all modules
+# Usage: import "math"
+
+import "libs/luz-math/constants.luz"
+import "libs/luz-math/number_theory.luz"
+import "libs/luz-math/trigonometry.luz"
+import "libs/luz-math/logarithms.luz"
+import "libs/luz-math/geometry.luz"
+import "libs/luz-math/statistics.luz"

@@ -1,0 +1,46 @@
+# statistics.luz — sum, mean, median, variance, std_dev
+
+function sum(list) {
+    total = 0
+    for x in list { total = total + x }
+    return total
+}
+
+function mean(list) {
+    if len(list) == 0 { alert "mean: list is empty" }
+    return sum(list) / len(list)
+}
+
+function median(list) {
+    if len(list) == 0 { alert "median: list is empty" }
+    sorted = []
+    for x in list { append(sorted, x) }
+    i = 1
+    while i < len(sorted) {
+        key = sorted[i]
+        j = i - 1
+        while j >= 0 and sorted[j] > key {
+            sorted[j + 1] = sorted[j]
+            j = j - 1
+        }
+        sorted[j + 1] = key
+        i = i + 1
+    }
+    mid = len(sorted) // 2
+    if even(len(sorted)) {
+        return (sorted[mid - 1] + sorted[mid]) / 2
+    }
+    return sorted[mid]
+}
+
+function variance(list) {
+    if len(list) == 0 { alert "variance: list is empty" }
+    m = mean(list)
+    total = 0
+    for x in list { total = total + (x - m) * (x - m) }
+    return total / len(list)
+}
+
+function std_dev(list) {
+    return sqrt(variance(list))
+}

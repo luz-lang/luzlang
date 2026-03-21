@@ -1,0 +1,46 @@
+# trigonometry.luz — sin, cos, tan, degree/radian conversion
+# Uses Taylor series with range reduction for precision
+
+import "libs/luz-math/constants.luz"
+
+function sin(x) {
+    x = x - TAU * floor(x / TAU)
+    if x > PI { x = x - TAU }
+    result = 0
+    term = x
+    n = 1
+    while n < 20 {
+        result = result + term
+        term = 0 - term * x * x / ((2 * n) * (2 * n + 1))
+        n = n + 1
+    }
+    return result
+}
+
+function cos(x) {
+    x = x - TAU * floor(x / TAU)
+    if x > PI { x = x - TAU }
+    result = 0
+    term = 1
+    n = 1
+    while n < 20 {
+        result = result + term
+        term = 0 - term * x * x / ((2 * n - 1) * (2 * n))
+        n = n + 1
+    }
+    return result
+}
+
+function tan(x) {
+    c = cos(x)
+    if c == 0 { alert "tan: undefined at this value" }
+    return sin(x) / c
+}
+
+function to_rad(degrees) {
+    return degrees * PI / 180
+}
+
+function to_deg(radians) {
+    return radians * 180 / PI
+}
