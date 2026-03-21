@@ -22,6 +22,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Files]
 Source: "..\dist\luz.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\ray.exe"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\Luz REPL"; Filename: "{app}\luz.exe"
