@@ -306,6 +306,9 @@ class Interpreter:
             'sign': self.builtin_sign,
             'odd': self.builtin_odd,
             'even': self.builtin_even,
+            '_rand_float': self.builtin_rand_float,
+            '_rand_int': self.builtin_rand_int,
+            '_rand_seed': self.builtin_rand_seed,
         }
 
     # execute_block() runs a list of statements inside a given environment.
@@ -1292,3 +1295,19 @@ class Interpreter:
     def builtin_even(self, x):
         self._require_num(x, 'even')
         return int(x) % 2 == 0
+
+    # ── Random primitives (used by luz-random stdlib) ──────────────────────────
+
+    def builtin_rand_float(self):
+        import random
+        return random.random()
+
+    def builtin_rand_int(self, a, b):
+        import random
+        self._require_num(a, '_rand_int')
+        self._require_num(b, '_rand_int')
+        return random.randint(int(a), int(b))
+
+    def builtin_rand_seed(self, seed):
+        import random
+        random.seed(seed)

@@ -1,0 +1,47 @@
+# core.luz — Basic random number generation
+
+# Set the random seed for reproducible results
+function seed(value) {
+    _rand_seed(value)
+}
+
+# Random float between 0.0 and 1.0
+function random() {
+    return _rand_float()
+}
+
+# Random float between low and high
+function random_float(low, high) {
+    return low + _rand_float() * (high - low)
+}
+
+# Random integer between low and high (inclusive)
+function random_int(low, high) {
+    return _rand_int(low, high)
+}
+
+# Random boolean with optional probability (default 0.5)
+function random_bool(chance) {
+    return _rand_float() < chance
+}
+
+function coin() {
+    return _rand_float() < 0.5
+}
+
+# Random sign: returns 1 or -1
+function random_sign() {
+    if coin() { return 1 }
+    return 0 - 1
+}
+
+# Gaussian-ish value using central limit theorem approximation
+function random_normal(mean, std) {
+    sum = 0
+    i = 0
+    while i < 12 {
+        sum = sum + _rand_float()
+        i = i + 1
+    }
+    return (sum - 6) * std + mean
+}

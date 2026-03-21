@@ -1,0 +1,65 @@
+# sequences.luz — Randomization of lists and selections
+
+# Pick one random element from a list
+function pick(list) {
+    if len(list) == 0 { alert "pick: list is empty" }
+    return list[_rand_int(0, len(list) - 1)]
+}
+
+# Pick n unique elements from a list
+function sample(list, n) {
+    if n > len(list) { alert "sample: n is larger than the list" }
+    pool = []
+    for item in list { append(pool, item) }
+    result = []
+    i = 0
+    while i < n {
+        idx = _rand_int(0, len(pool) - 1)
+        append(result, pool[idx])
+        pop(pool, idx)
+        i = i + 1
+    }
+    return result
+}
+
+# Shuffle a list and return a new shuffled copy
+function shuffle(list) {
+    result = []
+    for item in list { append(result, item) }
+    i = len(result) - 1
+    while i > 0 {
+        j = _rand_int(0, i)
+        temp = result[i]
+        result[i] = result[j]
+        result[j] = temp
+        i = i - 1
+    }
+    return result
+}
+
+# Generate a list of n random integers between low and high
+function random_list(n, low, high) {
+    result = []
+    i = 0
+    while i < n {
+        append(result, _rand_int(low, high))
+        i = i + 1
+    }
+    return result
+}
+
+# Weighted pick — picks from list using weights list
+function weighted_pick(list, weights) {
+    if len(list) != len(weights) { alert "weighted_pick: list and weights must be same length" }
+    total = 0
+    for w in weights { total = total + w }
+    r = _rand_float() * total
+    cumulative = 0
+    i = 0
+    while i < len(list) {
+        cumulative = cumulative + weights[i]
+        if r <= cumulative { return list[i] }
+        i = i + 1
+    }
+    return list[len(list) - 1]
+}

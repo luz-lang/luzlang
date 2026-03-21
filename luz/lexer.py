@@ -314,8 +314,8 @@ class Lexer:
             ):
                 tokens.append(self.make_number())
 
-            # Identifiers and keywords both start with a letter.
-            elif self.current_char in string.ascii_letters:
+            # Identifiers and keywords start with a letter or underscore.
+            elif self.current_char in string.ascii_letters or self.current_char == '_':
                 tokens.append(self.make_identifier())
 
             elif self.current_char == '#':

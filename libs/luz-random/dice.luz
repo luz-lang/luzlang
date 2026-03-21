@@ -1,0 +1,54 @@
+# dice.luz — Dice, coins, and probability tools
+
+# Roll a die with n sides (e.g. roll(6) for a d6)
+function roll(sides) {
+    if sides < 2 { alert "roll: a die must have at least 2 sides" }
+    return _rand_int(1, sides)
+}
+
+# Roll n dice of given sides and return the sum
+function roll_sum(n, sides) {
+    total = 0
+    i = 0
+    while i < n {
+        total = total + roll(sides)
+        i = i + 1
+    }
+    return total
+}
+
+# Roll n dice and return the list of individual results
+function roll_all(n, sides) {
+    results = []
+    i = 0
+    while i < n {
+        append(results, roll(sides))
+        i = i + 1
+    }
+    return results
+}
+
+# Roll with advantage: roll twice, return the higher
+function roll_advantage(sides) {
+    a = roll(sides)
+    b = roll(sides)
+    return max(a, b)
+}
+
+# Roll with disadvantage: roll twice, return the lower
+function roll_disadvantage(sides) {
+    a = roll(sides)
+    b = roll(sides)
+    return min(a, b)
+}
+
+# Returns true with the given probability (0.0 to 1.0)
+function chance(probability) {
+    return _rand_float() < probability
+}
+
+# Flip a coin — returns "heads" or "tails"
+function flip() {
+    if coin() { return "heads" }
+    return "tails"
+}

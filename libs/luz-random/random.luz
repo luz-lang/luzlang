@@ -1,0 +1,8 @@
+# random.luz — Luz Random Library v1.0.0
+# Entry point: imports all modules
+# Usage: import "random"
+
+import "libs/luz-random/core.luz"
+import "libs/luz-random/sequences.luz"
+import "libs/luz-random/generators.luz"
+import "libs/luz-random/dice.luz"

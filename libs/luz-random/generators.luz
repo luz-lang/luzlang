@@ -1,0 +1,59 @@
+# generators.luz — Random IDs, tokens, colors, and names
+
+# Random hex character
+function _hex_char() {
+    chars = ["0","1","2","3","4","5","6","7","8","9","a","b","c","d","e","f"]
+    return chars[_rand_int(0, 15)]
+}
+
+# Random hex color — returns "#rrggbb"
+function random_color() {
+    result = "#"
+    i = 0
+    while i < 6 {
+        result = result + _hex_char()
+        i = i + 1
+    }
+    return result
+}
+
+# Random token of given length using alphanumeric characters
+function random_token(length) {
+    chars = ["a","b","c","d","e","f","g","h","i","j","k","l","m",
+             "n","o","p","q","r","s","t","u","v","w","x","y","z",
+             "A","B","C","D","E","F","G","H","I","J","K","L","M",
+             "N","O","P","Q","R","S","T","U","V","W","X","Y","Z",
+             "0","1","2","3","4","5","6","7","8","9"]
+    result = ""
+    i = 0
+    while i < length {
+        result = result + chars[_rand_int(0, len(chars) - 1)]
+        i = i + 1
+    }
+    return result
+}
+
+# Random numeric PIN of given length
+function random_pin(length) {
+    result = ""
+    i = 0
+    while i < length {
+        result = result + to_str(_rand_int(0, 9))
+        i = i + 1
+    }
+    return result
+}
+
+# Simple UUID v4 style (not RFC-compliant but unique enough for most uses)
+function random_uuid() {
+    function seg(n) {
+        result = ""
+        i = 0
+        while i < n {
+            result = result + _hex_char()
+            i = i + 1
+        }
+        return result
+    }
+    return seg(8) + "-" + seg(4) + "-4" + seg(3) + "-" + seg(4) + "-" + seg(12)
+}
