@@ -546,6 +546,22 @@ class Interpreter:
     # set check catches it immediately.
     def visit_ImportNode(self, node):
         file_path = node.file_path_token.value
+
+        # Resolution order:
+        #   1. Path as written (relative or absolute)
+        #   2. luz_modules/<name>/<name>.luz
+        #   3. luz_modules/<name>/main.luz
+        if not os.path.exists(file_path):
+            name = os.path.splitext(os.path.basename(file_path))[0]
+            candidates = [
+                os.path.join("luz_modules", name, f"{name}.luz"),
+                os.path.join("luz_modules", name, "main.luz"),
+            ]
+            for candidate in candidates:
+                if os.path.exists(candidate):
+                    file_path = candidate
+                    break
+
         abs_path = os.path.abspath(file_path)
 
         if abs_path in self.imported_files:
