@@ -6,7 +6,7 @@ on:
       - "v*"
 
 jobs:
-  build-and-release:
+  build-windows:
     runs-on: windows-latest
 
     steps:
@@ -42,9 +42,42 @@ jobs:
           $version = "${{ github.ref_name }}"
           Rename-Item installer_output\luz-setup.exe "luz-$version-setup.exe"
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release and upload Windows installer
         uses: softprops/action-gh-release@v2
         with:
           name: "Luz ${{ github.ref_name }}"
           files: installer_output/luz-${{ github.ref_name }}-setup.exe
           generate_release_notes: true
+
+  build-linux:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build luz
+        run: pyinstaller --onefile --name luz main.py
+
+      - name: Build ray
+        run: pyinstaller --onefile --name ray ray.py
+
+      - name: Package binaries
+        run: |
+          VERSION="${{ github.ref_name }}"
+          mkdir -p luz-linux
+          cp dist/luz dist/ray luz-linux/
+          tar -czf "luz-${VERSION}-linux.tar.gz" -C luz-linux .
+
+      - name: Upload Linux binaries to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: luz-${{ github.ref_name }}-linux.tar.gz
