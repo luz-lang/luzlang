@@ -409,6 +409,26 @@ class Interpreter:
     def visit_NullNode(self, node):
         return None
 
+    def visit_SwitchNode(self, node):
+        subject = self.visit(node.subject_node)
+        for value_nodes, block in node.cases:
+            for vn in value_nodes:
+                if self.visit(vn) == subject:
+                    return self.visit(block)
+        if node.else_block is not None:
+            return self.visit(node.else_block)
+        return None
+
+    def visit_MatchNode(self, node):
+        subject = self.visit(node.subject_node)
+        for patterns, result_node in node.arms:
+            if patterns is None:  # wildcard _
+                return self.visit(result_node)
+            for pn in patterns:
+                if self.visit(pn) == subject:
+                    return self.visit(result_node)
+        return None
+
     def visit_TernaryNode(self, node):
         if self.visit(node.condition_node):
             return self.visit(node.value_node)

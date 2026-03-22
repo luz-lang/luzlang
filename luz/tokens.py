@@ -116,6 +116,11 @@ class TokenType(Enum):
     # ── Variadic ──────────────────────────────────────────────────────────────
     ELLIPSIS = auto()  # ... — marks a variadic parameter: function f(...args)
 
+    # ── Switch / Match ────────────────────────────────────────────────────────
+    SWITCH = auto()    # switch <expr> { case … }
+    CASE   = auto()    # case <expr>, … { block }
+    MATCH  = auto()    # match <expr> { pattern => expr, … }
+
     # ── Sentinel ─────────────────────────────────────────────────────────────
     EOF = auto()       # End-of-file marker; always the last token in the list
 

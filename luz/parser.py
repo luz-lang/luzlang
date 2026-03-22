@@ -273,6 +273,26 @@ class AttributeAssignNode:
         self.attr_token = attr_token
         self.value_node = value_node
         
+# Represents a switch statement:
+#   switch expr { case v1, v2 { block } … else { block } }
+# cases: list of (value_nodes, block) — each case can match multiple values.
+# else_block: optional fallback block (None if absent).
+class SwitchNode:
+    def __init__(self, subject_node, cases, else_block):
+        self.subject_node = subject_node
+        self.cases = cases        # [(value_nodes, block), …]
+        self.else_block = else_block
+
+# Represents a match expression:
+#   match expr { pattern, … => expr  …  _ => expr }
+# arms: list of (pattern_nodes_or_None, result_node)
+#   pattern_nodes_or_None is None for the wildcard arm (_).
+# Returns the result_node of the first matched arm.
+class MatchNode:
+    def __init__(self, subject_node, arms):
+        self.subject_node = subject_node
+        self.arms = arms  # [(pattern_nodes | None, result_node), …]
+
 class MethodCallNode:
     def __init__(self, obj_node, method_token, arguments):
         self.obj_node = obj_node
@@ -402,6 +422,12 @@ class Parser:
         
         if self.current_token.type == TokenType.CLASS:
             return self.class_def()
+
+        if self.current_token.type == TokenType.SWITCH:
+            return self.switch_stmt()
+
+        if self.current_token.type == TokenType.MATCH:
+            return self.match_expr()
 
         COMPOUND = {
             TokenType.PLUS_ASSIGN:  TokenType.PLUS,
@@ -612,7 +638,104 @@ class Parser:
 
         node = FuncDefNode(name_token, arg_tokens, block, defaults, variadic); node.line = line
         return node
-    
+
+    # switch_stmt() parses:
+    #   switch <expr> {
+    #       case v1, v2 { block }
+    #       …
+    #       else { block }
+    #   }
+    def switch_stmt(self):
+        line = self.current_token.line
+        self.advance()  # Consume 'switch'
+        subject = self.expr()
+        if self.current_token.type != TokenType.LBRACE:
+            raise StructureFault("Expected '{' after switch expression")
+        self.advance()  # Consume '{'
+
+        cases = []
+        else_block = None
+        while self.current_token.type not in (TokenType.RBRACE, TokenType.EOF):
+            if self.current_token.type == TokenType.ELSE:
+                self.advance()  # Consume 'else'
+                if self.current_token.type != TokenType.LBRACE:
+                    raise StructureFault("Expected '{' after else in switch")
+                self.advance()
+                else_block = self.statements()
+                if self.current_token.type != TokenType.RBRACE:
+                    raise UnexpectedTokenFault("Expected '}' after else block")
+                self.advance()
+                break  # else must be last
+            if self.current_token.type != TokenType.CASE:
+                raise UnexpectedTokenFault(f"Expected 'case' or 'else' in switch, got {self.current_token}")
+            self.advance()  # Consume 'case'
+            # One or more comma-separated values
+            values = [self.expr()]
+            while self.current_token.type == TokenType.COMMA:
+                self.advance()
+                values.append(self.expr())
+            if self.current_token.type != TokenType.LBRACE:
+                raise StructureFault("Expected '{' after case value(s)")
+            self.advance()
+            block = self.statements()
+            if self.current_token.type != TokenType.RBRACE:
+                raise UnexpectedTokenFault("Expected '}' after case block")
+            self.advance()
+            cases.append((values, block))
+
+        if self.current_token.type != TokenType.RBRACE:
+            raise UnexpectedTokenFault("Expected '}' to close switch")
+        self.advance()  # Consume closing '}'
+        node = SwitchNode(subject, cases, else_block); node.line = line
+        return node
+
+    # match_expr() parses:
+    #   match <expr> {
+    #       v1, v2 => result_expr
+    #       _      => result_expr
+    #   }
+    # Returns the result of the first matching arm.
+    # `_` (underscore identifier) acts as the wildcard / default arm.
+    def match_expr(self):
+        line = self.current_token.line
+        self.advance()  # Consume 'match'
+        subject = self.expr()
+        if self.current_token.type != TokenType.LBRACE:
+            raise StructureFault("Expected '{' after match expression")
+        self.advance()  # Consume '{'
+
+        arms = []
+        while self.current_token.type not in (TokenType.RBRACE, TokenType.EOF):
+            # Wildcard arm: _ => expr
+            if (self.current_token.type == TokenType.IDENTIFIER and
+                    self.current_token.value == '_'):
+                self.advance()  # Consume '_'
+                if self.current_token.type != TokenType.ARROW:
+                    raise StructureFault("Expected '=>' after wildcard '_' in match")
+                self.advance()
+                result = self.expr()
+                arms.append((None, result))
+                break  # wildcard must be last
+            # Normal arm: expr, expr, … => result
+            patterns = [self.expr()]
+            while self.current_token.type == TokenType.COMMA:
+                self.advance()
+                if (self.current_token.type == TokenType.IDENTIFIER and
+                        self.current_token.value == '_'):
+                    raise StructureFault("Wildcard '_' cannot be combined with other patterns")
+                patterns.append(self.expr())
+            if self.current_token.type != TokenType.ARROW:
+                raise StructureFault("Expected '=>' after match pattern(s)")
+            self.advance()  # Consume '=>'
+            result = self.expr()
+            arms.append((patterns, result))
+
+        if self.current_token.type != TokenType.RBRACE:
+            raise UnexpectedTokenFault("Expected '}' to close match")
+        self.advance()  # Consume '}'
+        node = MatchNode(subject, arms); node.line = line
+        return node
+
     def class_def(self):
         line = self.current_token.line
         self.advance()  # Consume 'class'
@@ -829,6 +952,9 @@ class Parser:
         # to handle chained subscripts: a[0][1][2]
         token = self.current_token
         node = None
+
+        if token.type == TokenType.MATCH:
+            return self.match_expr()
 
         if token.type == TokenType.MINUS:
             # Unary minus: recurse into factor() so that '--x' also works.
