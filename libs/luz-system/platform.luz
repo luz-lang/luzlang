@@ -1,0 +1,19 @@
+# platform.luz — OS detection helpers
+
+function is_windows() {
+    return get_os() == "windows"
+}
+
+function is_linux() {
+    return get_os() == "linux"
+}
+
+function is_mac() {
+    return get_os() == "macos"
+}
+
+# Returns the path separator for the current OS
+function path_sep() {
+    if is_windows() { return "\\" }
+    return "/"
+}

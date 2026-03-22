@@ -336,6 +336,20 @@ class Interpreter:
             'append_file': self.builtin_append_file,
             'file_exists': self.builtin_file_exists,
             'delete_file': self.builtin_delete_file,
+            'exec':        self.builtin_exec,
+            'exec_code':   self.builtin_exec_code,
+            'env_get':     self.builtin_env_get,
+            'env_set':     self.builtin_env_set,
+            'get_cwd':     self.builtin_get_cwd,
+            'set_cwd':     self.builtin_set_cwd,
+            'get_os':      self.builtin_get_os,
+            'get_hostname': self.builtin_get_hostname,
+            'get_username': self.builtin_get_username,
+            'get_pid':     self.builtin_get_pid,
+            'sys_exit':    self.builtin_sys_exit,
+            'list_dir':    self.builtin_list_dir,
+            'make_dir':    self.builtin_make_dir,
+            'sleep':       self.builtin_sleep,
         }
 
     # execute_block() runs a list of statements inside a given environment.
@@ -1438,4 +1452,86 @@ class Interpreter:
             raise RuntimeFault(f"delete_file: file not found: '{path}'")
         except OSError as e:
             raise RuntimeFault(f"delete_file: {e}")
+        return None
+
+    # ── System / OS ───────────────────────────────────────────────────────────
+
+    def builtin_exec(self, command):
+        if not isinstance(command, str):
+            raise TypeViolationFault("exec: command must be a string")
+        import subprocess
+        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        return result.stdout + result.stderr
+
+    def builtin_exec_code(self, command):
+        if not isinstance(command, str):
+            raise TypeViolationFault("exec_code: command must be a string")
+        import subprocess
+        result = subprocess.run(command, shell=True)
+        return result.returncode
+
+    def builtin_env_get(self, name):
+        if not isinstance(name, str):
+            raise TypeViolationFault("env_get: name must be a string")
+        return os.environ.get(name, None)
+
+    def builtin_env_set(self, name, value):
+        if not isinstance(name, str):
+            raise TypeViolationFault("env_set: name must be a string")
+        os.environ[name] = str(value)
+        return None
+
+    def builtin_get_cwd(self):
+        return os.getcwd()
+
+    def builtin_set_cwd(self, path):
+        if not isinstance(path, str):
+            raise TypeViolationFault("set_cwd: path must be a string")
+        try:
+            os.chdir(path)
+        except OSError as e:
+            raise RuntimeFault(f"set_cwd: {e}")
+        return None
+
+    def builtin_get_os(self):
+        import platform
+        s = platform.system().lower()
+        if s == 'windows': return 'windows'
+        if s == 'darwin':  return 'macos'
+        return 'linux'
+
+    def builtin_get_hostname(self):
+        import socket
+        return socket.gethostname()
+
+    def builtin_get_username(self):
+        return os.environ.get('USERNAME') or os.environ.get('USER') or 'unknown'
+
+    def builtin_get_pid(self):
+        return os.getpid()
+
+    def builtin_sys_exit(self, code=0):
+        import sys
+        sys.exit(int(code))
+
+    def builtin_list_dir(self, path='.'):
+        if not isinstance(path, str):
+            raise TypeViolationFault("list_dir: path must be a string")
+        try:
+            return os.listdir(path)
+        except OSError as e:
+            raise RuntimeFault(f"list_dir: {e}")
+
+    def builtin_make_dir(self, path):
+        if not isinstance(path, str):
+            raise TypeViolationFault("make_dir: path must be a string")
+        try:
+            os.makedirs(path, exist_ok=True)
+        except OSError as e:
+            raise RuntimeFault(f"make_dir: {e}")
+        return None
+
+    def builtin_sleep(self, seconds):
+        import time
+        time.sleep(float(seconds))
         return None

@@ -1,0 +1,7 @@
+# system.luz — Luz System Library v1.0.0
+# Entry point: imports all modules
+# Usage: import "system"
+
+import "libs/luz-system/platform.luz"
+import "libs/luz-system/path.luz"
+import "libs/luz-system/proc.luz"

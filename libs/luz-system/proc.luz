@@ -1,0 +1,25 @@
+# proc.luz — Process and command execution helpers
+
+# Run a command and return its output, raising an alert if it fails
+function run(command) {
+    output = exec(command)
+    code = exec_code(command)
+    if code != 0 {
+        alert $"Command failed (exit {code}): {command}"
+    }
+    return output
+}
+
+# Run a command silently, return true if it succeeded
+function try_run(command) {
+    return exec_code(command) == 0
+}
+
+# Print system info to stdout
+function sysinfo() {
+    write($"OS:       {get_os()}")
+    write($"Hostname: {get_hostname()}")
+    write($"User:     {get_username()}")
+    write($"PID:      {get_pid()}")
+    write($"CWD:      {get_cwd()}")
+}
