@@ -435,6 +435,8 @@ class Interpreter:
         if isinstance(base, list):
             if not isinstance(index, int):
                 raise TypeViolationFault(f"List index must be an integer, not {type(index).__name__}")
+            if index < 0:
+                index = len(base) + index
             try:
                 return base[index]
             except IndexError:
@@ -442,6 +444,8 @@ class Interpreter:
         elif isinstance(base, str):
             if not isinstance(index, int):
                 raise TypeViolationFault(f"String index must be an integer, not {type(index).__name__}")
+            if index < 0:
+                index = len(base) + index
             try:
                 return base[index]
             except IndexError:
@@ -470,6 +474,8 @@ class Interpreter:
         if isinstance(base, list):
             if not isinstance(index, int):
                 raise TypeViolationFault(f"List index must be an integer, not {type(index).__name__}")
+            if index < 0:
+                index = len(base) + index
             try:
                 base[index] = value
                 return value
