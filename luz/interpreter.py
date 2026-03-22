@@ -650,34 +650,36 @@ class Interpreter:
     # surfaced as a string prefixed with "InternalFault:" so the Luz programmer
     # at least sees something useful rather than a raw Python traceback.
     def visit_AttemptRescueNode(self, node):
+        result = None
+        pending_raise = None
+
         try:
-            return self.visit(node.try_block)
+            result = self.visit(node.try_block)
         except LuzError as e:
             if isinstance(e, (ReturnException, BreakException, ContinueException)):
-                # These are control-flow signals, not errors — let them propagate.
-                raise e
-
-            # Run the rescue block in a new child scope so the error variable
-            # does not leak into the surrounding environment after the block ends.
-            previous_env = self.current_env
-            rescue_env = Environment(previous_env)
-            self.current_env = rescue_env
-            try:
-                self.current_env.define(node.error_var_token.value, str(e))
-                return self.visit(node.catch_block)
-            finally:
-                self.current_env = previous_env
+                pending_raise = e
+            else:
+                rescue_env = Environment(self.current_env)
+                rescue_env.define(node.error_var_token.value, str(e))
+                try:
+                    result = self.execute_block(node.catch_block, rescue_env)
+                except Exception as re:
+                    pending_raise = re
         except Exception as e:
-            # Catch unexpected Python exceptions (interpreter bugs) so Luz code
-            # can at least observe that something went wrong.
-            previous_env = self.current_env
-            rescue_env = Environment(previous_env)
-            self.current_env = rescue_env
+            rescue_env = Environment(self.current_env)
+            rescue_env.define(node.error_var_token.value, f"InternalFault: {str(e)}")
             try:
-                self.current_env.define(node.error_var_token.value, f"InternalFault: {str(e)}")
-                return self.visit(node.catch_block)
-            finally:
-                self.current_env = previous_env
+                result = self.execute_block(node.catch_block, rescue_env)
+            except Exception as re:
+                pending_raise = re
+
+        if node.finally_block:
+            self.execute_block(node.finally_block, Environment(self.current_env))
+
+        if pending_raise is not None:
+            raise pending_raise
+
+        return result
 
     # visit_AlertNode() implements the `alert` statement, which intentionally
     # raises a UserFault.  This is Luz's mechanism for user-level errors —

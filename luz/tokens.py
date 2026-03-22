@@ -81,6 +81,7 @@ class TokenType(Enum):
     # ── Error handling ───────────────────────────────────────────────────────
     ATTEMPT = auto()   # attempt { … }  (analogous to try)
     RESCUE = auto()    # rescue (e) { … }  (analogous to except/catch)
+    FINALLY = auto()   # finally { … }  — always runs after attempt/rescue
     ALERT = auto()     # alert <expr>  — raise a user-defined error
 
     # ── Loop control ─────────────────────────────────────────────────────────

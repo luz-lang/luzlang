@@ -251,10 +251,11 @@ class ImportNode:
 # error_var_token is the IDENTIFIER token used to bind the error message inside
 # the rescue body.
 class AttemptRescueNode:
-    def __init__(self, try_block, error_var_token, catch_block):
+    def __init__(self, try_block, error_var_token, catch_block, finally_block=None):
         self.try_block = try_block
         self.error_var_token = error_var_token
         self.catch_block = catch_block
+        self.finally_block = finally_block  # Optional — runs regardless of error
 
 # Represents the `alert` statement — raises a user-defined error at runtime.
 class AlertNode:
@@ -589,7 +590,18 @@ class Parser:
             raise UnexpectedTokenFault(f"Expected '}}' at the end of rescue block, received {self.current_token}")
         self.advance()  # Consume '}'
 
-        node = AttemptRescueNode(try_block, error_var, catch_block); node.line = line
+        finally_block = None
+        if self.current_token.type == TokenType.FINALLY:
+            self.advance()  # Consume 'finally'
+            if self.current_token.type != TokenType.LBRACE:
+                raise StructureFault("Expected '{' after finally")
+            self.advance()  # Consume '{'
+            finally_block = self.statements()
+            if self.current_token.type != TokenType.RBRACE:
+                raise UnexpectedTokenFault("Expected '}' at end of finally block")
+            self.advance()  # Consume '}'
+
+        node = AttemptRescueNode(try_block, error_var, catch_block, finally_block); node.line = line
         return node
 
     # func_def() parses:  function name(param, …) { body }

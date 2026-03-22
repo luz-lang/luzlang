@@ -50,6 +50,7 @@ class Lexer:
         'import': TokenType.IMPORT,
         'attempt': TokenType.ATTEMPT,
         'rescue': TokenType.RESCUE,
+        'finally': TokenType.FINALLY,
         'alert': TokenType.ALERT,
         'break': TokenType.BREAK,
         'continue': TokenType.CONTINUE,
