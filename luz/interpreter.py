@@ -274,6 +274,26 @@ class LuzInstance:
         return f"<{self.luz_class.name} instance>"
 
 
+# LuzModule is the runtime object created by `import "x" as alias`.
+# It wraps a snapshot of all names defined in the module's global environment,
+# exposing them as attributes accessible via dot notation (alias.name).
+class LuzModule:
+    def __init__(self, name, namespace):
+        self.name = name          # module file path (for repr)
+        self.namespace = namespace  # dict of name -> value
+
+    def get(self, name):
+        if name in self.namespace:
+            return self.namespace[name]
+        raise AttributeNotFoundFault(f"Module '{self.name}' has no attribute '{name}'")
+
+    def set(self, name, value):
+        self.namespace[name] = value
+
+    def __repr__(self):
+        return f"<module '{self.name}'>"
+
+
 # LuzSuperProxy gives methods access to the parent class's versions of methods.
 # When a method is called on an instance, `super` is injected into the local
 # scope as a LuzSuperProxy(instance, parent_class).  Calling super.method(args)
@@ -766,17 +786,54 @@ class Interpreter:
         except Exception as e:
             raise ImportFault(f"Failed to read module '{file_path}': {str(e)}")
 
+        try:
+            lexer = Lexer(code)
+            tokens = lexer.get_tokens()
+            ast = Parser(tokens).parse()
+        except LuzError as e:
+            raise ImportFault(f"Error in module '{file_path}': {str(e)}")
+
+        # ── from "x" import a, b  or  import "x" as alias ────────────────────
+        # Both forms execute the module in an isolated environment so its
+        # definitions don't spill into the global scope automatically.
+        if node.names is not None or node.alias is not None:
+            module_env = Environment(self.global_env)
+            temp_env = self.current_env
+            self.current_env = module_env
+            self._file_stack.append(abs_path)
+            try:
+                self.visit(ast)
+            except LuzError as e:
+                raise ImportFault(f"Error in module '{file_path}': {str(e)}")
+            except Exception as e:
+                raise ImportFault(f"Unexpected error in module '{file_path}': {str(e)}")
+            finally:
+                self._file_stack.pop()
+                self.current_env = temp_env
+
+            if node.names is not None:
+                # from "x" import a, b  — copy selected names to current global env
+                for name_token in node.names:
+                    n = name_token.value
+                    try:
+                        self.global_env.define(n, module_env.lookup(n))
+                    except UndefinedSymbolFault:
+                        raise ImportFault(f"Module '{file_path}' has no name '{n}'")
+            else:
+                # import "x" as alias  — wrap everything in a LuzModule
+                mod_name = os.path.basename(file_path)
+                module_obj = LuzModule(mod_name, dict(module_env.records))
+                self.global_env.define(node.alias.value, module_obj)
+            return None
+
+        # ── Plain import "x"  — current behaviour: run in global env ─────────
+        if abs_path in self.imported_files:
+            return None  # Already imported — skip silently
+
         # Register before executing to guard against circular imports.
         self.imported_files.add(abs_path)
 
         try:
-            lexer = Lexer(code)
-            tokens = lexer.get_tokens()
-            parser = Parser(tokens)
-            ast = parser.parse()
-
-            # Switch to the global env for module execution so definitions land
-            # at the top level regardless of where `import` appeared in the code.
             temp_env = self.current_env
             self.current_env = self.global_env
             self._file_stack.append(abs_path)
@@ -784,10 +841,9 @@ class Interpreter:
                 self.visit(ast)
             finally:
                 self._file_stack.pop()
-                self.current_env = temp_env  # Restore the caller's env
+                self.current_env = temp_env
 
         except LuzError as e:
-            # Deregister on failure so a corrected retry can succeed.
             self.imported_files.discard(abs_path)
             raise ImportFault(f"Error in module '{file_path}': {str(e)}")
         except Exception as e:
@@ -1309,15 +1365,15 @@ class Interpreter:
     # visit_AttributeAccessNode() reads obj.attr from a LuzInstance.
     def visit_AttributeAccessNode(self, node):
         obj = self.visit(node.obj_node)
-        if not isinstance(obj, LuzInstance):
-            raise InvalidUsageFault(f"Cannot access attribute on non-instance value '{obj}'")
+        if not isinstance(obj, (LuzInstance, LuzModule)):
+            raise InvalidUsageFault(f"Cannot access attribute on value '{obj}'")
         return obj.get(node.attr_token.value)
 
     # visit_AttributeAssignNode() writes obj.attr = value on a LuzInstance.
     def visit_AttributeAssignNode(self, node):
         obj = self.visit(node.obj_node)
-        if not isinstance(obj, LuzInstance):
-            raise InvalidUsageFault(f"Cannot set attribute on non-instance value '{obj}'")
+        if not isinstance(obj, (LuzInstance, LuzModule)):
+            raise InvalidUsageFault(f"Cannot set attribute on value '{obj}'")
         value = self.visit(node.value_node)
         obj.set(node.attr_token.value, value)
         return value
@@ -1343,6 +1399,17 @@ class Interpreter:
             if grandparent:
                 extra['super'] = LuzSuperProxy(obj.instance, grandparent)
             return method(self, [obj.instance] + args, extra_bindings=extra, kwargs=kwargs)
+
+        # Module function call: m.func(args) — no implicit `self`, no super
+        if isinstance(obj, LuzModule):
+            fn = obj.get(node.method_token.value)
+            if not callable(fn) and not isinstance(fn, (LuzFunction, LuzLambda)):
+                raise InvalidUsageFault(f"Module attribute '{node.method_token.value}' is not callable")
+            if isinstance(fn, LuzFunction):
+                return fn(self, args, kwargs=kwargs)
+            if isinstance(fn, LuzLambda):
+                return fn(self, args)
+            raise InvalidUsageFault(f"Module attribute '{node.method_token.value}' is not callable")
 
         if not isinstance(obj, LuzInstance):
             raise InvalidUsageFault(f"Cannot call method on non-instance value '{obj}'")

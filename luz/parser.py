@@ -244,8 +244,10 @@ class ReturnNode:
 
 # Represents an import statement: import "path/to/file.luz"
 class ImportNode:
-    def __init__(self, file_path_token):
+    def __init__(self, file_path_token, alias=None, names=None):
         self.file_path_token = file_path_token  # STRING token carrying the path
+        self.alias = alias    # IDENTIFIER token for `import "x" as alias`
+        self.names = names    # list of IDENTIFIER tokens for `from "x" import a, b`
 
 # Represents an attempt/rescue block (structured error handling).
 # error_var_token is the IDENTIFIER token used to bind the error message inside
@@ -406,6 +408,30 @@ class Parser:
             node = ReturnNode(expr); node.line = line
             return node
 
+        if self.current_token.type == TokenType.FROM:
+            line = self.current_token.line
+            self.advance()  # consume 'from'
+            if self.current_token.type != TokenType.STRING:
+                raise UnexpectedTokenFault(f"Expected module path after 'from'")
+            path_token = self.current_token
+            self.advance()  # consume path
+            if self.current_token.type != TokenType.IMPORT:
+                raise StructureFault("Expected 'import' after module path")
+            self.advance()  # consume 'import'
+            names = []
+            if self.current_token.type != TokenType.IDENTIFIER:
+                raise UnexpectedTokenFault("Expected name after 'import'")
+            names.append(self.current_token)
+            self.advance()
+            while self.current_token.type == TokenType.COMMA:
+                self.advance()  # consume ','
+                if self.current_token.type != TokenType.IDENTIFIER:
+                    raise UnexpectedTokenFault("Expected name after ','")
+                names.append(self.current_token)
+                self.advance()
+            node = ImportNode(path_token, names=names); node.line = line
+            return node
+
         if self.current_token.type == TokenType.IMPORT:
             line = self.current_token.line
             self.advance()
@@ -413,7 +439,14 @@ class Parser:
                 raise UnexpectedTokenFault(f"Expected module path string after 'import', received {self.current_token}")
             path_token = self.current_token
             self.advance()
-            node = ImportNode(path_token); node.line = line
+            alias = None
+            if self.current_token.type == TokenType.AS:
+                self.advance()  # consume 'as'
+                if self.current_token.type != TokenType.IDENTIFIER:
+                    raise UnexpectedTokenFault("Expected alias name after 'as'")
+                alias = self.current_token
+                self.advance()
+            node = ImportNode(path_token, alias=alias); node.line = line
             return node
 
         if self.current_token.type == TokenType.ATTEMPT:

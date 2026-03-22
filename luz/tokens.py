@@ -77,6 +77,8 @@ class TokenType(Enum):
 
     # ── Module system ────────────────────────────────────────────────────────
     IMPORT = auto()    # Import another Luz source file into the global env
+    FROM = auto()      # from "path" import name1, name2
+    AS = auto()        # import "path" as alias
 
     # ── Error handling ───────────────────────────────────────────────────────
     ATTEMPT = auto()   # attempt { … }  (analogous to try)

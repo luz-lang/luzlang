@@ -48,6 +48,8 @@ class Lexer:
         'return': TokenType.RETURN,
         'fn': TokenType.FN,
         'import': TokenType.IMPORT,
+        'from': TokenType.FROM,
+        'as': TokenType.AS,
         'attempt': TokenType.ATTEMPT,
         'rescue': TokenType.RESCUE,
         'finally': TokenType.FINALLY,
