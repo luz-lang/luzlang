@@ -936,9 +936,9 @@ class Interpreter:
     def visit_IfNode(self, node):
         for condition, block in node.cases:
             if self.visit(condition):
-                return self.visit(block)
+                return self.execute_block(block, Environment(self.current_env))
         if node.else_case:
-            return self.visit(node.else_case)
+            return self.execute_block(node.else_case, Environment(self.current_env))
         return None
 
     # visit_WhileNode() re-evaluates the condition before every iteration.
@@ -946,7 +946,7 @@ class Interpreter:
     def visit_WhileNode(self, node):
         while self.visit(node.condition_node):
             try:
-                self.visit(node.block)
+                self.execute_block(node.block, Environment(self.current_env))
             except BreakException:
                 break
             except ContinueException:
