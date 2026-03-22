@@ -598,18 +598,16 @@ class Parser:
             raise StructureFault("Expected 'rescue' after attempt block")
         self.advance()  # Consume 'rescue'
 
-        if self.current_token.type != TokenType.LPAREN:
-            raise StructureFault("Expected '(' after rescue")
-        self.advance()  # Consume '('
-
-        if self.current_token.type != TokenType.IDENTIFIER:
-            raise UnexpectedTokenFault("Expected error variable name in rescue")
-        error_var = self.current_token
-        self.advance()  # Consume the error variable name
-
-        if self.current_token.type != TokenType.RPAREN:
-            raise UnexpectedTokenFault("Expected ')'")
-        self.advance()  # Consume ')'
+        error_var = None
+        if self.current_token.type == TokenType.LPAREN:
+            self.advance()  # Consume '('
+            if self.current_token.type != TokenType.IDENTIFIER:
+                raise UnexpectedTokenFault("Expected error variable name in rescue")
+            error_var = self.current_token
+            self.advance()  # Consume the error variable name
+            if self.current_token.type != TokenType.RPAREN:
+                raise UnexpectedTokenFault("Expected ')'")
+            self.advance()  # Consume ')'
 
         if self.current_token.type != TokenType.LBRACE:
             raise StructureFault("Expected '{' for rescue block")

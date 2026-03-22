@@ -680,14 +680,16 @@ class Interpreter:
                 pending_raise = e
             else:
                 rescue_env = Environment(self.current_env)
-                rescue_env.define(node.error_var_token.value, str(e))
+                if node.error_var_token is not None:
+                    rescue_env.define(node.error_var_token.value, str(e))
                 try:
                     result = self.execute_block(node.catch_block, rescue_env)
                 except Exception as re:
                     pending_raise = re
         except Exception as e:
             rescue_env = Environment(self.current_env)
-            rescue_env.define(node.error_var_token.value, f"InternalFault: {str(e)}")
+            if node.error_var_token is not None:
+                rescue_env.define(node.error_var_token.value, f"InternalFault: {str(e)}")
             try:
                 result = self.execute_block(node.catch_block, rescue_env)
             except Exception as re:
