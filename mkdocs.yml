@@ -19,13 +19,28 @@ theme:
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
   features:
+    - navigation.instant
+    - navigation.instant.progress
+    - navigation.tracking
     - navigation.tabs
+    - navigation.tabs.sticky
     - navigation.sections
+    - navigation.expand
+    - navigation.indexes
     - navigation.top
+    - navigation.footer
     - search.highlight
     - search.suggest
+    - search.share
     - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - content.tooltips
+    - toc.follow
   logo: img/icon.png
   favicon: img/icon.png
   icon:
@@ -34,13 +49,25 @@ theme:
 markdown_extensions:
   - pymdownx.highlight:
       anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
   - pymdownx.superfences
   - pymdownx.inlinehilite
-  - admonition
+  - pymdownx.tabbed:
+      alternate_style: true
   - pymdownx.details
+  - pymdownx.mark
+  - pymdownx.keys
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - admonition
+  - attr_list
+  - md_in_html
   - tables
   - toc:
       permalink: true
+      title: On this page
 
 nav:
   - Home: index.md
@@ -66,5 +93,6 @@ nav:
       - luz-random: stdlib/random.md
       - luz-io: stdlib/io.md
       - luz-system: stdlib/system.md
+      - luz-clock: stdlib/clock.md
   - Ray Package Manager: ray.md
   - Architecture: architecture.md

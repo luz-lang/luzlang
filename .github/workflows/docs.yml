@@ -24,7 +24,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install MkDocs
-        run: pip install mkdocs-material
+        run: pip install mkdocs-material mkdocs-material[imaging]
 
       - name: Configure git
         run: |
