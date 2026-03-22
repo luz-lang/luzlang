@@ -2,7 +2,7 @@
     "name": "luz",
     "displayName": "Luz Language",
     "description": "Luz language support: syntax highlighting, autocompletion, error detection, snippets",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "publisher": "Elabsurdo984-luzlang",
     "icon": "icon.png",
     "engines": {

@@ -76,8 +76,12 @@ jobs:
 
       - name: Package binaries
         run: |
-          mkdir -p luz-linux
+          mkdir -p luz-linux/lib
           cp dist/luz dist/ray luz-linux/
+          cp -r libs/luz-math luz-linux/lib/
+          cp -r libs/luz-random luz-linux/lib/
+          cp -r libs/luz-system luz-linux/lib/
+          cp -r libs/luz-io luz-linux/lib/
           tar -czf "luz-linux-${LINUX_VERSION}.tar.gz" -C luz-linux .
 
       - name: Upload Linux binaries to release

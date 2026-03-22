@@ -42,6 +42,7 @@ from .exceptions import *
 from .lexer import Lexer
 from .parser import Parser
 import os
+import sys
 
 
 # ── Environment (variable store) ─────────────────────────────────────────────
@@ -659,6 +660,14 @@ class Interpreter:
                     os.path.join(luz_home, "lib", f"luz_{name}", f"{name}.luz"),
                     os.path.join(luz_home, "lib", f"luz_{name}", "main.luz"),
                 ]
+            # Installed binary fallback: look in lib/ next to the executable
+            exe_dir = os.path.dirname(sys.executable)
+            candidates += [
+                os.path.join(exe_dir, "lib", name, f"{name}.luz"),
+                os.path.join(exe_dir, "lib", name, "main.luz"),
+                os.path.join(exe_dir, "lib", f"luz-{name}", f"{name}.luz"),
+                os.path.join(exe_dir, "lib", f"luz-{name}", "main.luz"),
+            ]
             # Development fallback: look in libs/ relative to cwd
             candidates += [
                 os.path.join("libs", f"luz-{name}", f"{name}.luz"),
