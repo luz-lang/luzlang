@@ -1,0 +1,23 @@
+# files.luz — File utility functions
+
+# Copy the contents of src into dst.
+function copy_file(src, dst) {
+    content = read_file(src)
+    write_file(dst, content)
+}
+
+# Read a file and return its content, or a default value if the file doesn't exist.
+function read_file_or(path, default_value) {
+    if file_exists(path) {
+        return read_file(path)
+    }
+    return default_value
+}
+
+# Write content to a file only if the file does not already exist.
+function write_file_new(path, content) {
+    if file_exists(path) {
+        alert $"write_file_new: file already exists: '{path}'"
+    }
+    write_file(path, content)
+}

@@ -1,0 +1,33 @@
+# lines.luz — Line-based file reading and writing
+
+# Read a file and return its lines as a list of strings.
+# The newline character is stripped from each line.
+function read_lines(path) {
+    content = read_file(path)
+    return split(content, "\n")
+}
+
+# Write a list of strings to a file, one per line.
+function write_lines(path, lines) {
+    content = join(lines, "\n")
+    write_file(path, content)
+}
+
+# Append a single line to a file.
+function append_line(path, line) {
+    append_file(path, line + "\n")
+}
+
+# Count the number of lines in a file.
+function count_lines(path) {
+    return len(read_lines(path))
+}
+
+# Return the nth line of a file (0-indexed).
+function read_line(path, n) {
+    lines = read_lines(path)
+    if n < 0 or n >= len(lines) {
+        alert $"read_line: line index {n} out of range"
+    }
+    return lines[n]
+}

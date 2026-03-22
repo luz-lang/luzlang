@@ -1,0 +1,7 @@
+# io.luz — Luz I/O Library v1.0.0
+# Entry point: imports all modules
+# Usage: import "io"
+
+import "libs/luz-io/lines.luz"
+import "libs/luz-io/csv.luz"
+import "libs/luz-io/files.luz"

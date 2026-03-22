@@ -331,6 +331,11 @@ class Interpreter:
             '_rand_float': self.builtin_rand_float,
             '_rand_int': self.builtin_rand_int,
             '_rand_seed': self.builtin_rand_seed,
+            'read_file':   self.builtin_read_file,
+            'write_file':  self.builtin_write_file,
+            'append_file': self.builtin_append_file,
+            'file_exists': self.builtin_file_exists,
+            'delete_file': self.builtin_delete_file,
         }
 
     # execute_block() runs a list of statements inside a given environment.
@@ -1379,3 +1384,58 @@ class Interpreter:
     def builtin_rand_seed(self, seed):
         import random
         random.seed(seed)
+
+    # ── File I/O ──────────────────────────────────────────────────────────────
+
+    def builtin_read_file(self, path):
+        if not isinstance(path, str):
+            raise TypeViolationFault("read_file: path must be a string")
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            raise RuntimeFault(f"read_file: file not found: '{path}'")
+        except OSError as e:
+            raise RuntimeFault(f"read_file: {e}")
+
+    def builtin_write_file(self, path, content):
+        if not isinstance(path, str):
+            raise TypeViolationFault("write_file: path must be a string")
+        if not isinstance(content, str):
+            raise TypeViolationFault("write_file: content must be a string")
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                f.write(content)
+        except OSError as e:
+            raise RuntimeFault(f"write_file: {e}")
+        return None
+
+    def builtin_append_file(self, path, content):
+        if not isinstance(path, str):
+            raise TypeViolationFault("append_file: path must be a string")
+        if not isinstance(content, str):
+            raise TypeViolationFault("append_file: content must be a string")
+        try:
+            with open(path, 'a', encoding='utf-8') as f:
+                f.write(content)
+        except OSError as e:
+            raise RuntimeFault(f"append_file: {e}")
+        return None
+
+    def builtin_file_exists(self, path):
+        if not isinstance(path, str):
+            raise TypeViolationFault("file_exists: path must be a string")
+        import os
+        return os.path.exists(path)
+
+    def builtin_delete_file(self, path):
+        if not isinstance(path, str):
+            raise TypeViolationFault("delete_file: path must be a string")
+        import os
+        try:
+            os.remove(path)
+        except FileNotFoundError:
+            raise RuntimeFault(f"delete_file: file not found: '{path}'")
+        except OSError as e:
+            raise RuntimeFault(f"delete_file: {e}")
+        return None

@@ -1,0 +1,48 @@
+# csv.luz — Simple CSV reading and writing
+
+# Read a CSV file and return a list of rows.
+# Each row is a list of strings. The first row is the header.
+function read_csv(path) {
+    lines = read_lines(path)
+    rows = []
+    for line in lines {
+        if len(trim(line)) > 0 {
+            append(rows, split(line, ","))
+        }
+    }
+    return rows
+}
+
+# Read a CSV file as a list of dictionaries using the first row as keys.
+function read_csv_dict(path) {
+    rows = read_csv(path)
+    if len(rows) == 0 { return [] }
+    headers = rows[0]
+    result = []
+    i = 1
+    while i < len(rows) {
+        row = rows[i]
+        entry = {}
+        j = 0
+        while j < len(headers) {
+            if j < len(row) {
+                entry[headers[j]] = trim(row[j])
+            } else {
+                entry[headers[j]] = ""
+            }
+            j += 1
+        }
+        append(result, entry)
+        i += 1
+    }
+    return result
+}
+
+# Write a list of rows (list of lists) to a CSV file.
+function write_csv(path, rows) {
+    lines = []
+    for row in rows {
+        append(lines, join(row, ","))
+    }
+    write_lines(path, lines)
+}

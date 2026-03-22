@@ -883,7 +883,10 @@ class Parser:
         # Top-level expression entry point.
         # Ternary has the lowest precedence: value if condition else other
         node = self.logical_or()
-        if self.current_token.type == TokenType.IF:
+        # Only parse as ternary if 'else' appears before any unmatched '{'.
+        # Without this check, `x = value\nif cond { }` would consume the
+        # next statement's `if` as a ternary operator.
+        if self.current_token.type == TokenType.IF and self._has_ternary_else():
             line = self.current_token.line
             self.advance()  # Consume 'if'
             condition = self.logical_or()
@@ -895,6 +898,34 @@ class Parser:
             ternary.line = line
             return ternary
         return node
+
+    def _has_ternary_else(self):
+        """Scan ahead from the current IF token to check if 'else' appears
+        before a '{' at depth 0 (which would mean it is an if-statement, not
+        a ternary).  Parentheses and brackets are tracked so that braces
+        inside call arguments are not mistaken for block delimiters."""
+        depth = 0
+        i = self.pos + 1  # start after the IF token
+        while i < len(self.tokens):
+            t = self.tokens[i]
+            if t.type == TokenType.EOF:
+                return False
+            if t.type == TokenType.LBRACE:
+                if depth == 0:
+                    return False  # block start at top level → if-statement
+                depth += 1
+            elif t.type == TokenType.RBRACE:
+                depth -= 1
+                if depth < 0:
+                    return False
+            elif t.type in (TokenType.LPAREN, TokenType.LBRACKET):
+                depth += 1
+            elif t.type in (TokenType.RPAREN, TokenType.RBRACKET):
+                depth -= 1
+            elif t.type == TokenType.ELSE and depth == 0:
+                return True
+            i += 1
+        return False
 
     def logical_or(self):
         # `or` has the lowest precedence of any binary operator.
