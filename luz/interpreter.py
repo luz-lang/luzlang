@@ -786,11 +786,11 @@ class Interpreter:
                 raise IllegalOperationFault(f"Unsupported operand types for '-': {type(left).__name__} and {type(right).__name__}")
 
         elif node.op_token.type == TokenType.MUL:
-            # Allow string repetition: "ab" * 3 == "ababab"
-            # The right operand is truncated to int because Luz floats are
-            # valid numbers but Python str * float is not allowed.
+            # Allow string repetition: "ab" * 3 == "ababab" and 3 * "ab" == "ababab"
             if isinstance(left, str) and isinstance(right, (int, float)):
                 return left * int(right)
+            if isinstance(right, str) and isinstance(left, (int, float)):
+                return right * int(left)
             try:
                 return left * right
             except TypeError:
