@@ -4,7 +4,7 @@
 
 # Luz Programming Language
 
-**Luz** is a lightweight, interpreted programming language written in Python. Designed to be simple, readable, and expressive.
+**Luz** is an open-source, interpreted programming language written in Python. It features clean syntax, object-oriented programming, closures, pattern matching, error handling, and a built-in package manager — all in a single file you can run with `python main.py`.
 
 ```
 name = listen("What is your name? ")

@@ -1,5 +1,5 @@
 site_name: Luz Language
-site_description: A lightweight, interpreted programming language written in Python
+site_description: Luz is an open-source interpreted programming language written in Python. Clean syntax, OOP, closures, pattern matching, error handling, and a built-in package manager.
 site_url: https://elabsurdo984.github.io/luz-lang/
 repo_url: https://github.com/Elabsurdo984/luz-lang
 repo_name: Elabsurdo984/luz-lang
