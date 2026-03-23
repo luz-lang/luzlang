@@ -310,6 +310,32 @@ a.x()
 """
             run(code)
 
+    def test_bound_method(self):
+        code = """
+class Counter {
+    function init(self) { self.n = 0 }
+    function inc(self) { self.n = self.n + 1\nreturn self.n }
+}
+c = Counter()
+inc = c.inc
+a = inc()
+b = inc()
+"""
+        assert env(code, "a") == 1
+        assert env(code, "b") == 2
+
+    def test_bound_method_carries_instance(self):
+        code = """
+class Dog {
+    function init(self, name) { self.name = name }
+    function speak(self) { return self.name }
+}
+d = Dog("Rex")
+speak = d.speak
+res = speak()
+"""
+        assert env(code, "res") == "Rex"
+
 
 # ── Error handling ────────────────────────────────────────────────────────────
 

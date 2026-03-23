@@ -253,6 +253,18 @@ class LuzClass:
         return f"<class {self.name}>"
 
 
+# BoundMethod wraps a LuzFunction together with the instance it was retrieved
+# from.  When called, it automatically prepends the instance as `self` so the
+# caller does not need to pass it manually.
+class BoundMethod:
+    def __init__(self, instance, function):
+        self.instance = instance
+        self.function = function
+
+    def __repr__(self):
+        return f"<bound method '{self.function.node.name}' of {self.instance}>"
+
+
 # LuzInstance is the runtime object created when a class is called as a
 # constructor.  It stores instance attributes in a plain dict and looks up
 # methods on its class hierarchy when an attribute is not found locally.
@@ -266,7 +278,7 @@ class LuzInstance:
             return self.attributes[name]
         method = self.luz_class.find_method(name)
         if method is not None:
-            return method
+            return BoundMethod(self, method)
         raise AttributeNotFoundFault(f"'{self.luz_class.name}' has no attribute '{name}'")
 
     def set(self, name, value):
@@ -1146,6 +1158,12 @@ class Interpreter:
                     init_method(self, [instance] + arguments, extra_bindings=extra, kwargs=kwargs)
                 return instance
 
+            if isinstance(function, BoundMethod):
+                extra = {}
+                if function.instance.luz_class.parent:
+                    extra['super'] = LuzSuperProxy(function.instance, function.instance.luz_class.parent)
+                return function.function(self, [function.instance] + arguments, extra_bindings=extra, kwargs=kwargs)
+
             if not isinstance(function, (LuzFunction, LuzLambda)):
                 raise InvalidUsageFault(f"'{func_name}' is not a callable function")
             return function(self, arguments, kwargs=kwargs)
@@ -1428,7 +1446,8 @@ class Interpreter:
         if not isinstance(obj, LuzInstance):
             raise InvalidUsageFault(f"Cannot call method on non-instance value '{obj}'")
 
-        method = obj.get(node.method_token.value)
+        raw = obj.get(node.method_token.value)
+        method = raw.function if isinstance(raw, BoundMethod) else raw
         if not isinstance(method, LuzFunction):
             raise InvalidUsageFault(f"'{node.method_token.value}' is not a callable method")
 
