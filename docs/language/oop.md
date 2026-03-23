@@ -105,6 +105,29 @@ write(typeof(d))    # Dog
 write(typeof(42))   # int
 ```
 
+## Bound methods
+
+When you retrieve a method from an instance, `self` is automatically bound to it. You can store the method in a variable and call it later without passing the instance:
+
+```
+class Counter {
+    function init(self) { self.n = 0 }
+    function inc(self) {
+        self.n = self.n + 1
+        return self.n
+    }
+}
+
+c = Counter()
+inc = c.inc   # bound method — self is already c
+
+write(inc())  # 1
+write(inc())  # 2
+write(inc())  # 3
+```
+
+This works with any method, including inherited ones. The bound method always refers to the original instance.
+
 ## Polymorphism
 
 Because Luz is dynamically typed, any object with the right methods can be used interchangeably:

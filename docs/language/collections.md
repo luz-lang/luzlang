@@ -43,6 +43,32 @@ for fruit in fruits {
 | `pop(list)` | Remove and return the last element |
 | `pop(list, index)` | Remove and return element at index |
 
+### List dot methods
+
+All list operations are also available as dot methods:
+
+```
+nums = [1, 2, 3]
+
+nums.append(4)          # [1, 2, 3, 4]
+last = nums.pop()       # 4  — removes and returns the last element
+write(nums.len())       # 3
+write(nums.contains(2)) # true
+write(nums.contains(9)) # false
+
+words = ["hello", "world"]
+write(words.join(", "))  # hello, world
+```
+
+| Method | Equivalent built-in |
+|---|---|
+| `list.append(value)` | `append(list, value)` |
+| `list.pop()` | `pop(list)` |
+| `list.pop(index)` | `pop(list, index)` |
+| `list.len()` | `len(list)` |
+| `list.contains(value)` | — |
+| `list.join(sep)` | `join(sep, list)` |
+
 ---
 
 ## Strings
