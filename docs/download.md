@@ -22,23 +22,44 @@ const API = "https://api.github.com/repos/Elabsurdo984/luz-lang/releases";
 fetch(API)
   .then(r => r.json())
   .then(releases => {
-    const winRelease = releases.find(r => r.tag_name.startsWith("win-v"));
-    const linuxRelease = releases.find(r => r.tag_name.startsWith("linux-v"));
-
-    if (winRelease) {
-      const asset = winRelease.assets.find(a => a.name.endsWith("-setup.exe"));
-      if (asset) {
-        document.getElementById("win-btn").href = asset.browser_download_url;
-        document.getElementById("win-info").textContent = winRelease.tag_name + " · No dependencies";
+    const latest = releases.find(r => r.tag_name.startsWith("v"));
+    if (latest) {
+      const win = latest.assets.find(a => a.name.endsWith("-setup.exe"));
+      if (win) {
+        document.getElementById("win-btn").href = win.browser_download_url;
+        document.getElementById("win-info").textContent = latest.tag_name + " · No dependencies";
+      }
+      const linux = latest.assets.find(a => a.name.endsWith(".tar.gz"));
+      if (linux) {
+        document.getElementById("linux-btn").href = linux.browser_download_url;
+        document.getElementById("linux-info").textContent = latest.tag_name + " · luz + ray binaries";
       }
     }
 
-    if (linuxRelease) {
-      const asset = linuxRelease.assets.find(a => a.name.endsWith(".tar.gz"));
-      if (asset) {
-        document.getElementById("linux-btn").href = asset.browser_download_url;
-        document.getElementById("linux-info").textContent = linuxRelease.tag_name + " · luz + ray binaries";
-      }
+    // Older releases table
+    const container = document.getElementById("older-releases");
+    if (!container) return;
+
+    const rows = releases
+      .filter(r => r.tag_name.startsWith("v"))
+      .slice(1)  // skip latest
+      .map(r => {
+        const win   = r.assets.find(a => a.name.endsWith("-setup.exe"));
+        const linux = r.assets.find(a => a.name.endsWith(".tar.gz"));
+        const winLink   = win   ? `<a href="${win.browser_download_url}">Windows</a>`   : "—";
+        const linuxLink = linux ? `<a href="${linux.browser_download_url}">Linux</a>` : "—";
+        const date = r.published_at ? r.published_at.slice(0, 10) : "";
+        return `<tr><td>${r.tag_name}</td><td>${date}</td><td>${winLink}</td><td>${linuxLink}</td></tr>`;
+      });
+
+    if (rows.length === 0) {
+      container.innerHTML = "<p style='color:#888'>No previous releases yet.</p>";
+    } else {
+      container.innerHTML = `
+        <table>
+          <thead><tr><th>Version</th><th>Date</th><th>Windows</th><th>Linux</th></tr></thead>
+          <tbody>${rows.join("")}</tbody>
+        </table>`;
     }
   });
 </script>
@@ -69,12 +90,6 @@ ray install user/pkg   # install a package
 
 ---
 
-## Release history
+## Older releases
 
-| Version | Highlights |
-|---|---|
-| **v1.14.0** | File I/O built-ins, luz-io library, luz-system library, Linux binary |
-| **v1.13.0** | File I/O built-ins, luz-io library, ternary fix |
-| **v1.12.0** | switch/match, variadic functions, default parameters, multiple return values, ternary operator |
-| **v1.10.0** | luz-random library, compound assignment (`+=` etc.), negative indexing |
-| **v1.8.0** | Lambdas, OOP, format strings, modules, luz-math library, standalone installer |
+<div id="older-releases"><p style="color:#888">Loading...</p></div>
