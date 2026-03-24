@@ -1,0 +1,98 @@
+# 20_data_structures.luz
+# Stack, queue, and matrix implemented with classes.
+
+# ── Stack ─────────────────────────────────────────────────────────────────────
+
+class Stack {
+    function init(self) { self.data = [] }
+
+    function push(self, val) {
+        self.data.append(val)
+    }
+
+    function pop(self) {
+        if self.data.len() == 0 { alert("Stack underflow") }
+        return self.data.pop()
+    }
+
+    function peek(self) {
+        n = self.data.len()
+        if n == 0 { alert("Stack is empty") }
+        return self.data[n - 1]
+    }
+
+    function size(self) { return self.data.len() }
+    function is_empty(self) { return self.data.len() == 0 }
+}
+
+s = Stack()
+s.push(10)
+s.push(20)
+s.push(30)
+write($"peek: {s.peek()}")   # 30
+write($"pop:  {s.pop()}")    # 30
+write($"size: {s.size()}")   # 2
+
+# ── Queue ─────────────────────────────────────────────────────────────────────
+
+class Queue {
+    function init(self) { self.data = [] }
+
+    function enqueue(self, val) {
+        self.data.append(val)
+    }
+
+    function dequeue(self) {
+        if self.data.len() == 0 { alert("Queue is empty") }
+        return self.data.pop(0)
+    }
+
+    function front(self) {
+        if self.data.len() == 0 { alert("Queue is empty") }
+        return self.data[0]
+    }
+
+    function size(self) { return self.data.len() }
+    function is_empty(self) { return self.data.len() == 0 }
+}
+
+q = Queue()
+q.enqueue("first")
+q.enqueue("second")
+q.enqueue("third")
+write(q.dequeue())   # first
+write(q.front())     # second
+write($"queue size: {q.size()}")   # 2
+
+# ── Matrix ────────────────────────────────────────────────────────────────────
+
+class Matrix {
+    function init(self, rows, cols) {
+        self.rows = rows
+        self.cols = cols
+        self.data = []
+        for i = 0 to rows - 1 {
+            row = []
+            for j = 0 to cols - 1 { row.append(0) }
+            self.data.append(row)
+        }
+    }
+
+    function get(self, r, c) { return self.data[r][c] }
+    function set(self, r, c, val) { self.data[r][c] = val }
+
+    function print(self) {
+        for row in self.data { write(row) }
+    }
+}
+
+m = Matrix(3, 3)
+m.set(0, 0, 1)
+m.set(1, 1, 1)
+m.set(2, 2, 1)
+
+write("Identity matrix:")
+m.print()
+
+write($"m[1][1] = {m.get(1, 1)}")   # 1
+write($"m[0][2] = {m.get(0, 2)}")   # 0

@@ -1,0 +1,50 @@
+# 17_lambdas.luz
+# Lambdas, composition, and first-class functions.
+
+# Short form: fn(x) => expr
+square = fn(x) => x * x
+negate = fn(x) => -x
+is_even = fn(x) => x % 2 == 0
+
+write(square(5))     # 25
+write(negate(7))     # -7
+write(is_even(4))    # true
+
+# Long form: fn(x) { body }
+clamp = fn(val, lo, hi) {
+    if val < lo { return lo }
+    if val > hi { return hi }
+    return val
+}
+
+write(clamp(5, 0, 10))    # 5
+write(clamp(-3, 0, 10))   # 0
+write(clamp(15, 0, 10))   # 10
+
+# Function composition
+function compose(f, g) {
+    return fn(x) => f(g(x))
+}
+
+add1       = fn(x) => x + 1
+double     = fn(x) => x * 2
+double_add = compose(add1, double)
+
+write(double_add(5))   # 11  (5*2 + 1)
+
+# Lambdas stored in a dict as a dispatch table
+ops = {
+    "add": fn(a, b) => a + b,
+    "sub": fn(a, b) => a - b,
+    "mul": fn(a, b) => a * b,
+    "pow": fn(a, b) => a ** b
+}
+
+pairs = [["add", 3, 4], ["sub", 10, 3], ["mul", 6, 7], ["pow", 2, 8]]
+for pair in pairs {
+    op  = pair[0]
+    a   = pair[1]
+    b   = pair[2]
+    fn_op = ops[op]
+    write($"{op}({a}, {b}) = {fn_op(a, b)}")
+}

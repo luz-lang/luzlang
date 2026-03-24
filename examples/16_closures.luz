@@ -1,0 +1,58 @@
+# 16_closures.luz
+# Higher-order functions, closures, and functional patterns.
+
+class Counter {
+    function init(self, start) { self.n = start }
+    function increment(self) { self.n = self.n + 1   return self.n }
+}
+
+function make_counter(start) {
+    c = Counter(start)
+    return c.increment
+}
+
+function make_multiplier(factor) {
+    return fn(x) => x * factor
+}
+
+function map_list(lst, f) {
+    result = []
+    for item in lst { result.append(f(item)) }
+    return result
+}
+
+function filter_list(lst, pred) {
+    result = []
+    for item in lst {
+        if pred(item) { result.append(item) }
+    }
+    return result
+}
+
+function reduce_list(lst, f, acc) {
+    for item in lst { acc = f(acc, item) }
+    return acc
+}
+
+# Counter — each call returns the next value
+next = make_counter(0)
+write(next())   # 1
+write(next())   # 2
+write(next())   # 3
+
+# Multiplier factory
+double  = make_multiplier(2)
+triple  = make_multiplier(3)
+nums    = [1, 2, 3, 4, 5]
+
+write(map_list(nums, double))         # [2, 4, 6, 8, 10]
+write(map_list(nums, triple))         # [3, 6, 9, 12, 15]
+
+# Filter
+evens = filter_list(nums, fn(x) => x % 2 == 0)
+write(evens)                          # [2, 4]
+
+# Reduce
+total   = reduce_list(nums, fn(a, b) => a + b, 0)
+product = reduce_list(nums, fn(a, b) => a * b, 1)
+write($"sum={total} product={product}")   # sum=15 product=120
