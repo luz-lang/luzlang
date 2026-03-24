@@ -94,7 +94,20 @@ class TestStrings:
         assert val('"a\\nb"') == "a\nb"
         assert val('"a\\tb"') == "a\tb"
 
+    def test_uppercase(self):
+        assert val('"hello".uppercase()') == "HELLO"
 
+    def test_lowercase(self):
+        assert val('"HELLO".lowercase()') == "hello"
+
+    def test_trim(self):
+        assert val('"  hello  ".trim()') == "hello"
+
+    def test_swap(self):
+        assert val('"hello".swap("l", "r")') == "herro"
+
+    def test_split(self):
+        assert val('"a,b,c".split(",")') == ["a", "b", "c"]
 # ── Variables and scope ───────────────────────────────────────────────────────
 
 class TestScope:

@@ -1439,7 +1439,18 @@ class Interpreter:
         obj = self.visit(node.obj_node)
         args = [self.visit(arg) for arg in node.arguments]
         kwargs = {name: self.visit(expr) for name, expr in node.kwargs.items()}
-
+        if isinstance(obj, str):
+            str_methods = {
+                'uppercase': lambda: obj.upper(),
+                'lowercase': lambda: obj.lower(),
+                'trim': lambda: obj.strip(),
+                'swap': lambda: obj.replace(args[0], args[1]),
+                'split': lambda: obj.split(args[0]) if args else obj.split(),
+            }
+            method_name = node.method_token.value
+            if method_name in str_methods:
+                return str_methods[method_name]()
+            raise InvalidUsageFault(f"String has no method '{method_name}'")
         # super.method(args) — call the parent class's version with the same instance
         if isinstance(obj, LuzSuperProxy):
             method = obj.find_method(node.method_token.value)
