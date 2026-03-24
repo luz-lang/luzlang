@@ -82,6 +82,7 @@ class Lexer:
         self.text = text
         self.pos = 0
         self.line = 1  # 1-based line counter, incremented whenever '\n' is consumed
+        self.col = 1
         # Pre-load the first character so every helper can always read self.current_char
         # without bounds-checking.  None signals "end of input".
         self.current_char = self.text[0] if len(self.text) > 0 else None
@@ -92,6 +93,9 @@ class Lexer:
     def advance(self):
         if self.current_char == '\n':
             self.line += 1
+            self.col = 1
+        else:
+            self.col += 1
         self.pos += 1
         self.current_char = self.text[self.pos] if self.pos < len(self.text) else None
 
@@ -119,6 +123,7 @@ class Lexer:
         num_str = ''
         dot_count = 0
         line = self.line
+        col = self.col
         while self.current_char is not None and (self.current_char.isdigit() or self.current_char == '.'):
             if self.current_char == '.':
                 # A second dot cannot be part of this number literal — stop
@@ -143,12 +148,12 @@ class Lexer:
             while self.current_char is not None and self.current_char.isdigit():
                 num_str += self.current_char
                 self.advance()
-            return Token(TokenType.FLOAT, float(num_str), line)
+            return Token(TokenType.FLOAT, float(num_str), line, col)
 
         if dot_count == 0:
-            return Token(TokenType.INT, int(num_str), line)
+            return Token(TokenType.INT, int(num_str), line, col)
         else:
-            return Token(TokenType.FLOAT, float(num_str), line)
+            return Token(TokenType.FLOAT, float(num_str), line, col)
 
     # make_identifier() reads a run of letters, digits, and underscores.
     # After collection the string is checked against KEYWORDS.  Storing the
@@ -157,6 +162,7 @@ class Lexer:
     def make_identifier(self):
         id_str = ''
         line = self.line
+        col = self.col
         while self.current_char is not None and (self.current_char in string.ascii_letters + string.digits + '_'):
             id_str += self.current_char
             self.advance()
@@ -166,7 +172,7 @@ class Lexer:
         # the parser can use token.value to look them up in the environment.
         # All other keyword tokens don't need a value — their type is sufficient.
         needs_value = token_type in (TokenType.IDENTIFIER, TokenType.SELF)
-        return Token(token_type, id_str if needs_value else None, line)
+        return Token(token_type, id_str if needs_value else None, line, col)
 
     # make_string() processes a double-quoted string literal, including backslash
     # escape sequences.  The opening quote has already been identified by
@@ -174,6 +180,7 @@ class Lexer:
     def make_string(self):
         string_val = ''
         line = self.line
+        col = self.col
         self.advance()  # Consume the opening '"'
 
         while self.current_char is not None and self.current_char != '"':
@@ -232,14 +239,14 @@ class Lexer:
             raise e
 
         self.advance()  # Consume the closing '"'
-        return Token(TokenType.STRING, string_val, line)
+        return Token(TokenType.STRING, string_val, line, col)
 
     # make_fstring() collects the raw template content of a $"..." format string.
     # It does NOT parse expressions — that happens in the parser.  The raw
     # content is stored as-is so the parser can split on { } and sub-parse each
     # embedded expression.  Escape sequences outside of { } are resolved here;
     # characters inside { } are kept verbatim so the parser receives valid code.
-    def make_fstring(self, line):
+    def make_fstring(self, line, col=None):
         raw = ''
         self.advance()  # Consume opening '"'
         brace_depth = 0
@@ -277,79 +284,79 @@ class Lexer:
             e.line = line
             raise e
         self.advance()  # Consume closing '"'
-        return Token(TokenType.FSTRING, raw, line)
+        return Token(TokenType.FSTRING, raw, line, col)
 
     # make_slash() handles the ambiguity between '/' (division) and '//'
     # (integer division).  After consuming the first '/', it peeks at the next
     # character to decide which token to emit.
     def make_slash(self):
-        line = self.line
+        line = self.line; col = self.col
         self.advance()  # Consume the first '/'
         if self.current_char == '/':
             self.advance()  # Consume the second '/'
-            return Token(TokenType.IDIV, None, line)
+            return Token(TokenType.IDIV, None, line, col)
         if self.current_char == '=':
             self.advance()
-            return Token(TokenType.DIV_ASSIGN, None, line)
-        return Token(TokenType.DIV, None, line)
+            return Token(TokenType.DIV_ASSIGN, None, line, col)
+        return Token(TokenType.DIV, None, line, col)
 
     # make_star() handles '*' (multiplication) vs '**' (exponentiation).
     def make_star(self):
-        line = self.line
+        line = self.line; col = self.col
         self.advance()  # Consume the first '*'
         if self.current_char == '*':
             self.advance()  # Consume the second '*'
             if self.current_char == '=':
                 self.advance()
-                return Token(TokenType.POW_ASSIGN, None, line)
-            return Token(TokenType.POW, None, line)
+                return Token(TokenType.POW_ASSIGN, None, line, col)
+            return Token(TokenType.POW, None, line, col)
         if self.current_char == '=':
             self.advance()
-            return Token(TokenType.MUL_ASSIGN, None, line)
-        return Token(TokenType.MUL, None, line)
+            return Token(TokenType.MUL_ASSIGN, None, line, col)
+        return Token(TokenType.MUL, None, line, col)
 
     # make_equals() handles '=' (assignment), '==' (equality), and '=>' (arrow).
     def make_equals(self):
-        line = self.line
+        line = self.line; col = self.col
         self.advance()  # Consume the first '='
         if self.current_char == '=':
             self.advance()  # Consume the second '='
-            return Token(TokenType.EE, None, line)
+            return Token(TokenType.EE, None, line, col)
         if self.current_char == '>':
             self.advance()  # Consume '>'
-            return Token(TokenType.ARROW, None, line)
-        return Token(TokenType.ASSIGN, None, line)
+            return Token(TokenType.ARROW, None, line, col)
+        return Token(TokenType.ASSIGN, None, line, col)
 
     # make_not_equals() handles '!=' only.  A bare '!' is not a valid token in
     # Luz (logical NOT is the keyword 'not'), so failing to find '=' after '!'
     # is always a hard error.
     def make_not_equals(self):
-        line = self.line
+        line = self.line; col = self.col
         self.advance()  # Consume '!'
         if self.current_char == '=':
             self.advance()  # Consume '='
-            return Token(TokenType.NE, None, line)
+            return Token(TokenType.NE, None, line, col)
         e = InvalidTokenFault("Expected '=' after '!'")
-        e.line = line
+        e.line = line; e.col = col
         raise e
 
     # make_less_than() handles '<' (less-than) vs '<=' (less-than-or-equal).
     def make_less_than(self):
-        line = self.line
+        line = self.line; col = self.col
         self.advance()  # Consume '<'
         if self.current_char == '=':
             self.advance()  # Consume '='
-            return Token(TokenType.LTE, None, line)
-        return Token(TokenType.LT, None, line)
+            return Token(TokenType.LTE, None, line, col)
+        return Token(TokenType.LT, None, line, col)
 
     # make_greater_than() handles '>' vs '>='.
     def make_greater_than(self):
-        line = self.line
+        line = self.line; col = self.col
         self.advance()  # Consume '>'
         if self.current_char == '=':
             self.advance()  # Consume '='
-            return Token(TokenType.GTE, None, line)
-        return Token(TokenType.GT, None, line)
+            return Token(TokenType.GTE, None, line, col)
+        return Token(TokenType.GT, None, line, col)
 
     # get_tokens() is the main entry point.  It loops until end-of-input,
     # dispatching to the appropriate helper for each character category.
@@ -379,73 +386,73 @@ class Lexer:
                 self.skip_comment()
 
             elif self.current_char == '$':
-                line = self.line
+                line = self.line; col = self.col
                 self.advance()  # Consume '$'
                 if self.current_char != '"':
                     e = InvalidTokenFault("Expected '\"' after '$' for format string")
-                    e.line = line
+                    e.line = line; e.col = col
                     raise e
-                tokens.append(self.make_fstring(line))
+                tokens.append(self.make_fstring(line, col))
 
             elif self.current_char == '"':
                 tokens.append(self.make_string())
 
             # Single-character operators are produced inline — no helper needed.
             elif self.current_char == '+':
-                line = self.line
+                line = self.line; col = self.col
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    tokens.append(Token(TokenType.PLUS_ASSIGN, None, line))
+                    tokens.append(Token(TokenType.PLUS_ASSIGN, None, line, col))
                 else:
-                    tokens.append(Token(TokenType.PLUS, None, line))
+                    tokens.append(Token(TokenType.PLUS, None, line, col))
             elif self.current_char == '-':
-                line = self.line
+                line = self.line; col = self.col
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    tokens.append(Token(TokenType.MINUS_ASSIGN, None, line))
+                    tokens.append(Token(TokenType.MINUS_ASSIGN, None, line, col))
                 else:
-                    tokens.append(Token(TokenType.MINUS, None, line))
+                    tokens.append(Token(TokenType.MINUS, None, line, col))
 
             # Multi-character operators need lookahead — delegate to helpers.
             elif self.current_char == '*':
                 tokens.append(self.make_star())
             elif self.current_char == '%':
-                line = self.line
+                line = self.line; col = self.col
                 self.advance()
                 if self.current_char == '=':
                     self.advance()
-                    tokens.append(Token(TokenType.MOD_ASSIGN, None, line))
+                    tokens.append(Token(TokenType.MOD_ASSIGN, None, line, col))
                 else:
-                    tokens.append(Token(TokenType.MOD, None, line))
+                    tokens.append(Token(TokenType.MOD, None, line, col))
             elif self.current_char == '/':
                 tokens.append(self.make_slash())
 
             # Grouping / collection delimiters
             elif self.current_char == '(':
-                tokens.append(Token(TokenType.LPAREN, None, self.line))
+                tokens.append(Token(TokenType.LPAREN, None, self.line, self.col))
                 self.advance()
             elif self.current_char == ')':
-                tokens.append(Token(TokenType.RPAREN, None, self.line))
+                tokens.append(Token(TokenType.RPAREN, None, self.line, self.col))
                 self.advance()
             elif self.current_char == ',':
-                tokens.append(Token(TokenType.COMMA, None, self.line))
+                tokens.append(Token(TokenType.COMMA, None, self.line, self.col))
                 self.advance()
             elif self.current_char == ':':
-                tokens.append(Token(TokenType.COLON, None, self.line))
+                tokens.append(Token(TokenType.COLON, None, self.line, self.col))
                 self.advance()
             elif self.current_char == '[':
-                tokens.append(Token(TokenType.LBRACKET, None, self.line))
+                tokens.append(Token(TokenType.LBRACKET, None, self.line, self.col))
                 self.advance()
             elif self.current_char == ']':
-                tokens.append(Token(TokenType.RBRACKET, None, self.line))
+                tokens.append(Token(TokenType.RBRACKET, None, self.line, self.col))
                 self.advance()
             elif self.current_char == '{':
-                tokens.append(Token(TokenType.LBRACE, None, self.line))
+                tokens.append(Token(TokenType.LBRACE, None, self.line, self.col))
                 self.advance()
             elif self.current_char == '}':
-                tokens.append(Token(TokenType.RBRACE, None, self.line))
+                tokens.append(Token(TokenType.RBRACE, None, self.line, self.col))
                 self.advance()
 
             # Comparison and assignment operators (all need lookahead)
@@ -458,30 +465,30 @@ class Lexer:
             elif self.current_char == '>':
                 tokens.append(self.make_greater_than())
             elif self.current_char == ".":
-                line = self.line
+                line = self.line; col = self.col
                 # Check for ellipsis `...` before falling back to DOT
                 if self.pos + 2 < len(self.text) and self.text[self.pos + 1] == '.' and self.text[self.pos + 2] == '.':
                     self.advance(); self.advance(); self.advance()
-                    tokens.append(Token(TokenType.ELLIPSIS, None, line))
+                    tokens.append(Token(TokenType.ELLIPSIS, None, line, col))
                 else:
-                    tokens.append(Token(TokenType.DOT, None, line))
+                    tokens.append(Token(TokenType.DOT, None, line, col))
                     self.advance()
 
             elif self.current_char == '?':
-                line = self.line
+                line = self.line; col = self.col
                 self.advance()
                 if self.current_char == '?':
                     self.advance()
-                    tokens.append(Token(TokenType.NULL_COALESCE, None, line))
+                    tokens.append(Token(TokenType.NULL_COALESCE, None, line, col))
                 else:
                     e = InvalidTokenFault("Expected '?' after '?' for null-coalescing operator '??'")
-                    e.line = line
+                    e.line = line; e.col = col
                     raise e
 
             else:
                 # No rule matched — the character is not part of the Luz alphabet.
                 e = InvalidTokenFault(f"Illegal character: '{self.current_char}'")
-                e.line = self.line
+                e.line = self.line; e.col = self.col
                 raise e
 
         # The EOF sentinel lets the parser detect the end of input without

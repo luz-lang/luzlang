@@ -392,6 +392,7 @@ class Parser:
 
         if self.current_token.type == TokenType.RETURN:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()
             # `return` with no expression is valid — the function returns None.
             # We stop at RBRACE or EOF rather than trying to parse a non-existent expr.
@@ -404,12 +405,13 @@ class Parser:
                     while self.current_token.type == TokenType.COMMA:
                         self.advance()  # Consume ','
                         values.append(self.expr())
-                    expr = TupleNode(values); expr.line = line
-            node = ReturnNode(expr); node.line = line
+                    expr = TupleNode(values); expr.line = line; expr.col = col
+            node = ReturnNode(expr); node.line = line; node.col = col
             return node
 
         if self.current_token.type == TokenType.FROM:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()  # consume 'from'
             if self.current_token.type != TokenType.STRING:
                 raise UnexpectedTokenFault("Expected module path after 'from'")
@@ -429,11 +431,12 @@ class Parser:
                     raise UnexpectedTokenFault("Expected name after ','")
                 names.append(self.current_token)
                 self.advance()
-            node = ImportNode(path_token, names=names); node.line = line
+            node = ImportNode(path_token, names=names); node.line = line; node.col = col
             return node
 
         if self.current_token.type == TokenType.IMPORT:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()
             if self.current_token.type != TokenType.STRING:
                 raise UnexpectedTokenFault(f"Expected module path string after 'import', received {self.current_token}")
@@ -446,7 +449,7 @@ class Parser:
                     raise UnexpectedTokenFault("Expected alias name after 'as'")
                 alias = self.current_token
                 self.advance()
-            node = ImportNode(path_token, alias=alias); node.line = line
+            node = ImportNode(path_token, alias=alias); node.line = line; node.col = col
             return node
 
         if self.current_token.type == TokenType.ATTEMPT:
@@ -454,27 +457,31 @@ class Parser:
 
         if self.current_token.type == TokenType.ALERT:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()
             expr = self.expr()
-            node = AlertNode(expr); node.line = line
+            node = AlertNode(expr); node.line = line; node.col = col
             return node
 
         if self.current_token.type == TokenType.BREAK:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()
-            node = BreakNode(); node.line = line
+            node = BreakNode(); node.line = line; node.col = col
             return node
 
         if self.current_token.type == TokenType.CONTINUE:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()
-            node = ContinueNode(); node.line = line
+            node = ContinueNode(); node.line = line; node.col = col
             return node
 
         if self.current_token.type == TokenType.PASS:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()
-            node = PassNode(); node.line = line
+            node = PassNode(); node.line = line; node.col = col
             return node
         
         if self.current_token.type == TokenType.CLASS:
@@ -515,6 +522,7 @@ class Parser:
                         break
                 if i < len(self.tokens) and self.tokens[i].type == TokenType.ASSIGN:
                     line = self.current_token.line
+                    col = self.current_token.col
                     var_tokens = []
                     while self.current_token.type == TokenType.IDENTIFIER:
                         var_tokens.append(self.current_token)
@@ -525,7 +533,7 @@ class Parser:
                             break
                     self.advance()  # Consume '='
                     rhs = self.expr()
-                    node = DestructureAssignNode(var_tokens, rhs); node.line = line
+                    node = DestructureAssignNode(var_tokens, rhs); node.line = line; node.col = col
                     return node
 
             # One-token lookahead: if the token after the identifier is '=' or
@@ -536,20 +544,20 @@ class Parser:
                 self.advance()  # Consume the identifier
                 self.advance()  # Consume '='
                 expr = self.expr()
-                node = VarAssignNode(var_name, expr); node.line = var_name.line
+                node = VarAssignNode(var_name, expr); node.line = var_name.line; node.col = var_name.col
                 return node
 
             if next_token and next_token.type in COMPOUND:
                 var_name = self.current_token
                 self.advance()  # Consume the identifier
                 op_token = self.current_token
-                op_token = op_token.__class__(COMPOUND[op_token.type], None, op_token.line)
+                op_token = op_token.__class__(COMPOUND[op_token.type], None, op_token.line, op_token.col)
                 self.advance()  # Consume the compound operator
                 rhs = self.expr()
                 # Desugar: x += e  →  x = x + e
-                left = VarAccessNode(var_name); left.line = var_name.line
-                binop = BinOpNode(left, op_token, rhs); binop.line = var_name.line
-                node = VarAssignNode(var_name, binop); node.line = var_name.line
+                left = VarAccessNode(var_name); left.line = var_name.line; left.col = var_name.col
+                binop = BinOpNode(left, op_token, rhs); binop.line = var_name.line; binop.col = var_name.col
+                node = VarAssignNode(var_name, binop); node.line = var_name.line; node.col = var_name.col
                 return node
 
         # Fall through: parse as a general expression (function call, arithmetic, …)
@@ -557,20 +565,20 @@ class Parser:
 
         # Post-expression check for index assignment: lista[0] = 5
         if isinstance(node, IndexAccessNode) and self.current_token.type == TokenType.ASSIGN:
-            line = node.line
+            line = node.line; col = getattr(node, 'col', None)
             self.advance()  # Consume '='
             value = self.expr()
             assign_node = IndexAssignNode(node.base_node, node.index_node, value)
-            assign_node.line = line
+            assign_node.line = line; assign_node.col = col
             return assign_node
 
         # Post-expression check for attribute assignment: obj.attr = value
         if isinstance(node, AttributeAccessNode) and self.current_token.type == TokenType.ASSIGN:
-            line = node.line
+            line = node.line; col = getattr(node, 'col', None)
             self.advance()  # Consume '='
             value = self.expr()
             assign_node = AttributeAssignNode(node.obj_node, node.attr_token, value)
-            assign_node.line = line
+            assign_node.line = line; assign_node.col = col
             return assign_node
 
         return node
@@ -581,6 +589,7 @@ class Parser:
     # representation of whatever error was caught.
     def attempt_rescue_expr(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'attempt'
         if self.current_token.type != TokenType.LBRACE:
             raise StructureFault("Expected '{' after attempt")
@@ -632,7 +641,7 @@ class Parser:
                 raise UnexpectedTokenFault("Expected '}' at end of finally block")
             self.advance()  # Consume '}'
 
-        node = AttemptRescueNode(try_block, error_var, catch_block, finally_block); node.line = line
+        node = AttemptRescueNode(try_block, error_var, catch_block, finally_block); node.line = line; node.col = col
         return node
 
     # func_def() parses:  function name(param, …) { body }
@@ -640,6 +649,7 @@ class Parser:
     # bound by LuzFunction.__call__() at call time.
     def func_def(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'function'
         if self.current_token.type != TokenType.IDENTIFIER:
             raise UnexpectedTokenFault("Expected function name")
@@ -710,7 +720,7 @@ class Parser:
             raise UnexpectedTokenFault("Expected '}'")
         self.advance()  # Consume '}'
 
-        node = FuncDefNode(name_token, arg_tokens, block, defaults, variadic); node.line = line
+        node = FuncDefNode(name_token, arg_tokens, block, defaults, variadic); node.line = line; node.col = col
         return node
 
     # switch_stmt() parses:
@@ -721,6 +731,7 @@ class Parser:
     #   }
     def switch_stmt(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'switch'
         subject = self.expr()
         if self.current_token.type != TokenType.LBRACE:
@@ -760,7 +771,7 @@ class Parser:
         if self.current_token.type != TokenType.RBRACE:
             raise UnexpectedTokenFault("Expected '}' to close switch")
         self.advance()  # Consume closing '}'
-        node = SwitchNode(subject, cases, else_block); node.line = line
+        node = SwitchNode(subject, cases, else_block); node.line = line; node.col = col
         return node
 
     # match_expr() parses:
@@ -772,6 +783,7 @@ class Parser:
     # `_` (underscore identifier) acts as the wildcard / default arm.
     def match_expr(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'match'
         subject = self.expr()
         if self.current_token.type != TokenType.LBRACE:
@@ -807,11 +819,12 @@ class Parser:
         if self.current_token.type != TokenType.RBRACE:
             raise UnexpectedTokenFault("Expected '}' to close match")
         self.advance()  # Consume '}'
-        node = MatchNode(subject, arms); node.line = line
+        node = MatchNode(subject, arms); node.line = line; node.col = col
         return node
 
     def class_def(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'class'
         if self.current_token.type != TokenType.IDENTIFIER:
             raise UnexpectedTokenFault("Expected class name")
@@ -838,7 +851,7 @@ class Parser:
                 raise UnexpectedTokenFault("Expected method definition inside class")
             methods.append(self.func_def())
         self.advance()  # Consume '}'
-        node = ClassDefNode(name_token, methods, parent_token); node.line = line
+        node = ClassDefNode(name_token, methods, parent_token); node.line = line; node.col = col
         return node
 
     # if_expr() parses the full if / elif* / else? chain into a single IfNode.
@@ -846,6 +859,7 @@ class Parser:
     # evaluate them sequentially without needing to recurse.
     def if_expr(self):
         line = self.current_token.line
+        col = self.current_token.col
         cases = []
         else_case = None
 
@@ -884,12 +898,13 @@ class Parser:
                 raise UnexpectedTokenFault("Expected '}' after else block")
             self.advance()
 
-        node = IfNode(cases, else_case); node.line = line
+        node = IfNode(cases, else_case); node.line = line; node.col = col
         return node
 
     # while_expr() parses:  while condition { body }
     def while_expr(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'while'
         condition = self.expr()
         if self.current_token.type != TokenType.LBRACE:
@@ -899,7 +914,7 @@ class Parser:
         if self.current_token.type != TokenType.RBRACE:
             raise UnexpectedTokenFault("Expected '}' after while block")
         self.advance()
-        node = WhileNode(condition, block); node.line = line
+        node = WhileNode(condition, block); node.line = line; node.col = col
         return node
 
     # for_expr() handles two loop forms:
@@ -908,6 +923,7 @@ class Parser:
     # After consuming the variable name, a one-token lookahead decides which form.
     def for_expr(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'for'
         if self.current_token.type != TokenType.IDENTIFIER:
             raise UnexpectedTokenFault("Expected variable name after 'for'")
@@ -925,7 +941,7 @@ class Parser:
             if self.current_token.type != TokenType.RBRACE:
                 raise UnexpectedTokenFault("Expected '}' after for block")
             self.advance()
-            node = ForEachNode(var_name, iterable, block); node.line = line
+            node = ForEachNode(var_name, iterable, block); node.line = line; node.col = col
             return node
 
         # Range loop: for i = start to end { body }
@@ -948,7 +964,7 @@ class Parser:
         if self.current_token.type != TokenType.RBRACE:
             raise UnexpectedTokenFault("Expected '}' after for block")
         self.advance()
-        node = ForNode(var_name, start_value, end_value, block, step_node); node.line = line
+        node = ForNode(var_name, start_value, end_value, block, step_node); node.line = line; node.col = col
         return node
 
     # ── Expression parsing (operator-precedence chain) ────────────────────────
@@ -966,6 +982,7 @@ class Parser:
         # next statement's `if` as a ternary operator.
         if self.current_token.type == TokenType.IF and self._has_ternary_else():
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()  # Consume 'if'
             condition = self.logical_or()
             if self.current_token.type != TokenType.ELSE:
@@ -973,7 +990,7 @@ class Parser:
             self.advance()  # Consume 'else'
             else_node = self.expr()  # Right-recursive for chaining
             ternary = TernaryNode(node, condition, else_node)
-            ternary.line = line
+            ternary.line = line; ternary.col = col
             return ternary
         return node
 
@@ -1011,10 +1028,11 @@ class Parser:
         node = self.logical_or()
         if self.current_token.type == TokenType.NULL_COALESCE:
             line = self.current_token.line
+            col = self.current_token.col
             self.advance()
             right = self.null_coalesce()
             result = NullCoalesceNode(node, right)
-            result.line = line
+            result.line = line; result.col = col
             return result
         return node
 
@@ -1044,18 +1062,18 @@ class Parser:
                 self.advance()
                 right = self.arith_expr()
                 bin_node = BinOpNode(node, op_token, right)
-                bin_node.line = op_token.line
+                bin_node.line = op_token.line; bin_node.col = op_token.col
                 node = bin_node
             elif self.current_token.type == TokenType.NOT:
                 # Peek ahead: `not in` is a two-token membership operator
                 next_pos = self.pos + 1
                 if next_pos < len(self.tokens) and self.tokens[next_pos].type == TokenType.IN:
-                    op_token = Token(TokenType.NOT_IN, None, self.current_token.line)
+                    op_token = Token(TokenType.NOT_IN, None, self.current_token.line, self.current_token.col)
                     self.advance()  # Consume 'not'
                     self.advance()  # Consume 'in'
                     right = self.arith_expr()
                     bin_node = BinOpNode(node, op_token, right)
-                    bin_node.line = op_token.line
+                    bin_node.line = op_token.line; bin_node.col = op_token.col
                     node = bin_node
                 else:
                     break
@@ -1083,7 +1101,7 @@ class Parser:
             self.advance()
             exp = self.power()  # Recurse right → right-associative
             node = BinOpNode(base, op, exp)
-            node.line = op.line
+            node.line = op.line; node.col = op.col
             return node
         return base
 
@@ -1106,29 +1124,29 @@ class Parser:
             # Unary minus: recurse into factor() so that '--x' also works.
             self.advance()
             node = UnaryOpNode(token, self.factor())
-            node.line = token.line
+            node.line = token.line; node.col = token.col
             return node
 
         if token.type in (TokenType.INT, TokenType.FLOAT):
             self.advance()
             node = NumberNode(token)
-            node.line = token.line
+            node.line = token.line; node.col = token.col
         elif token.type == TokenType.STRING:
             self.advance()
             node = StringNode(token)
-            node.line = token.line
+            node.line = token.line; node.col = token.col
         elif token.type == TokenType.FSTRING:
             self.advance()
             node = self._parse_fstring_parts(token)
-            node.line = token.line
+            node.line = token.line; node.col = token.col
         elif token.type in (TokenType.TRUE, TokenType.FALSE):
             self.advance()
             node = BooleanNode(token)
-            node.line = token.line
+            node.line = token.line; node.col = token.col
         elif token.type == TokenType.NULL:
             self.advance()
             node = NullNode()
-            node.line = token.line
+            node.line = token.line; node.col = token.col
         elif token.type == TokenType.LBRACKET:
             node = self.list_literal()
         elif token.type == TokenType.LBRACE:
@@ -1139,7 +1157,7 @@ class Parser:
             node = self.identifier_expr()
         elif token.type == TokenType.FN:
             node = self.lambda_or_anon()
-            node.line = token.line
+            node.line = token.line; node.col = token.col
             return node
         elif token.type == TokenType.SELF:
             # `self` inside a method refers to the current instance.
@@ -1147,7 +1165,7 @@ class Parser:
             # falls through to the DOT-chaining loop below.
             self.advance()
             node = VarAccessNode(token)
-            node.line = token.line
+            node.line = token.line; node.col = token.col
         elif token.type == TokenType.LPAREN:
             # Parenthesised sub-expression for explicit grouping.
             self.advance()  # Consume '('
@@ -1165,17 +1183,19 @@ class Parser:
         while self.current_token.type in (TokenType.LBRACKET, TokenType.DOT):
             if self.current_token.type == TokenType.LBRACKET:
                 bracket_line = self.current_token.line
+                bracket_col = self.current_token.col
                 self.advance()  # Consume '['
                 index = self.expr()
                 if self.current_token.type != TokenType.RBRACKET:
                     raise UnexpectedTokenFault("Expected ']'")
                 self.advance()  # Consume ']'
                 index_node = IndexAccessNode(node, index)
-                index_node.line = bracket_line
+                index_node.line = bracket_line; index_node.col = bracket_col
                 node = index_node
             else:
                 # DOT — attribute read or method call
                 dot_line = self.current_token.line
+                dot_col = self.current_token.col
                 self.advance()  # Consume '.'
                 if self.current_token.type != TokenType.IDENTIFIER:
                     raise UnexpectedTokenFault("Expected attribute or method name after '.'")
@@ -1189,11 +1209,11 @@ class Parser:
                         raise UnexpectedTokenFault("Expected ')'")
                     self.advance()  # Consume ')'
                     node = MethodCallNode(node, attr_token, args, kwargs)
-                    node.line = dot_line
+                    node.line = dot_line; node.col = dot_col
                 else:
                     # Attribute read: obj.attr
                     node = AttributeAccessNode(node, attr_token)
-                    node.line = dot_line
+                    node.line = dot_line; node.col = dot_col
 
         return node
 
@@ -1209,11 +1229,11 @@ class Parser:
             if self.current_token.type != TokenType.RPAREN:
                 raise UnexpectedTokenFault("Expected ',' or ')'")
             self.advance()  # Consume ')'
-            node = CallNode(token, args, kwargs); node.line = token.line
+            node = CallNode(token, args, kwargs); node.line = token.line; node.col = token.col
             return node
         else:
             # Plain variable read
-            node = VarAccessNode(token); node.line = token.line
+            node = VarAccessNode(token); node.line = token.line; node.col = token.col
             return node
 
     # lambda_or_anon() parses both forms of anonymous callable:
@@ -1221,6 +1241,7 @@ class Parser:
     #   Long (anon fn):  fn(x) { body }         — body may contain any statements
     def lambda_or_anon(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume 'fn'
 
         if self.current_token.type != TokenType.LPAREN:
@@ -1247,7 +1268,7 @@ class Parser:
             self.advance()  # Consume '=>'
             expr = self.expr()
             node = LambdaNode(params, expr)
-            node.line = line
+            node.line = line; node.col = col
             return node
 
         if self.current_token.type == TokenType.LBRACE:
@@ -1258,7 +1279,7 @@ class Parser:
                 raise UnexpectedTokenFault("Expected '}'")
             self.advance()  # Consume '}'
             node = AnonFuncNode(params, block)
-            node.line = line
+            node.line = line; node.col = col
             return node
 
         raise StructureFault("Expected '=>' or '{' after lambda parameters")
@@ -1305,11 +1326,12 @@ class Parser:
     #                          [ expr for var in iterable if condition ]
     def list_literal(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume '['
 
         if self.current_token.type == TokenType.RBRACKET:
             self.advance()
-            node = ListNode([]); node.line = line
+            node = ListNode([]); node.line = line; node.col = col
             return node
 
         first = self.expr()
@@ -1333,7 +1355,7 @@ class Parser:
                 raise UnexpectedTokenFault("Expected ']' at the end of list comprehension")
             self.advance()  # Consume ']'
             node = ListCompNode(first, var_token, iterable, condition)
-            node.line = line
+            node.line = line; node.col = col
             return node
 
         # Otherwise it's a regular list literal
@@ -1347,7 +1369,7 @@ class Parser:
         if self.current_token.type != TokenType.RBRACKET:
             raise UnexpectedTokenFault("Expected ']' at the end of list")
         self.advance()  # Consume ']'
-        node = ListNode(elements); node.line = line
+        node = ListNode(elements); node.line = line; node.col = col
         return node
 
     # dict_literal() parses:  { key: value, key: value, … }
@@ -1355,6 +1377,7 @@ class Parser:
     # strings or numbers.  A trailing comma before '}' is also permitted.
     def dict_literal(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume '{'
         pairs = []
         if self.current_token.type != TokenType.RBRACE:
@@ -1379,7 +1402,7 @@ class Parser:
         if self.current_token.type != TokenType.RBRACE:
             raise UnexpectedTokenFault("Expected '}' at the end of dictionary")
         self.advance()  # Consume '}'
-        node = DictNode(pairs); node.line = line
+        node = DictNode(pairs); node.line = line; node.col = col
         return node
 
     def _is_dict_destructure(self):
@@ -1398,6 +1421,7 @@ class Parser:
 
     def dict_destructure_assign(self):
         line = self.current_token.line
+        col = self.current_token.col
         self.advance()  # Consume '{'
         key_tokens = [self.current_token]
         self.advance()  # Consume first identifier
@@ -1409,7 +1433,7 @@ class Parser:
         self.advance()  # Consume '='
         rhs = self.expr()
         node = DictDestructureAssignNode(key_tokens, rhs)
-        node.line = line
+        node.line = line; node.col = col
         return node
 
     # parse_call_args() parses the argument list inside a function/method call,
@@ -1470,6 +1494,6 @@ class Parser:
             except ExpressionFault:
                 raise OperatorFault(f"Operator '{op_token}' expects a valid expression on the right")
             bin_node = BinOpNode(left, op_token, right)
-            bin_node.line = op_token.line
+            bin_node.line = op_token.line; bin_node.col = op_token.col
             left = bin_node  # The new node becomes the left operand for the next iteration
         return left
