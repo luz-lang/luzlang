@@ -140,6 +140,81 @@ static int tarray_push(TokenArray* arr, CToken token) {
 }
 
 
+/* ── Stage 3: identifiers and keywords ──────────────────────────────────────
+ *
+ * Keyword table: a flat array of (string, TokenType) pairs.
+ * Linear search is fine — there are ~30 keywords and this runs once per
+ * identifier token.  The last entry uses NULL as a sentinel to mark the end.
+ */
+typedef struct { const char* word; TokenType type; } Keyword;
+
+static const Keyword KEYWORDS[] = {
+    { "if",       TT_IF       },
+    { "elif",     TT_ELIF     },
+    { "else",     TT_ELSE     },
+    { "while",    TT_WHILE    },
+    { "for",      TT_FOR      },
+    { "to",       TT_TO       },
+    { "in",       TT_IN       },
+    { "step",     TT_STEP     },
+    { "true",     TT_TRUE     },
+    { "false",    TT_FALSE    },
+    { "null",     TT_NULL     },
+    { "and",      TT_AND      },
+    { "or",       TT_OR       },
+    { "not",      TT_NOT      },
+    { "function", TT_FUNCTION },
+    { "return",   TT_RETURN   },
+    { "fn",       TT_FN       },
+    { "import",   TT_IMPORT   },
+    { "from",     TT_FROM     },
+    { "as",       TT_AS       },
+    { "attempt",  TT_ATTEMPT  },
+    { "rescue",   TT_RESCUE   },
+    { "finally",  TT_FINALLY  },
+    { "alert",    TT_ALERT    },
+    { "break",    TT_BREAK    },
+    { "continue", TT_CONTINUE },
+    { "pass",     TT_PASS     },
+    { "class",    TT_CLASS    },
+    { "self",     TT_SELF     },
+    { "extends",  TT_EXTENDS  },
+    { "switch",   TT_SWITCH   },
+    { "case",     TT_CASE     },
+    { "match",    TT_MATCH    },
+    { NULL,       TT_EOF      }   /* sentinel */
+};
+
+
+/* lex_identifier() is called when current_char is a letter or '_'.
+ * It reads the full word (letters, digits, underscores), then walks the
+ * keyword table.  If there is a match it returns a valueless keyword token;
+ * otherwise it returns TT_IDENTIFIER with the word as its value string so
+ * the parser can recover the variable or function name.
+ */
+static CToken lex_identifier(CLexer* lex) {
+    int  line = lex->line, col = lex->col;
+    char buf[256];
+    int  i = 0;
+    const Keyword* kw;
+
+    while (current_char(lex) != '\0' &&
+           (isalnum((unsigned char)current_char(lex)) || current_char(lex) == '_')) {
+        buf[i++] = current_char(lex);
+        advance(lex);
+    }
+    buf[i] = '\0';
+
+    /* Linear keyword search */
+    for (kw = KEYWORDS; kw->word != NULL; kw++) {
+        if (strcmp(buf, kw->word) == 0)
+            return make_token(kw->type, line, col);
+    }
+
+    return make_value_token(TT_IDENTIFIER, buf, line, col);
+}
+
+
 /* ── Stage 2: numbers and operators ─────────────────────────────────────────*/
 
 /* lex_number() is called when current_char is a digit.
@@ -321,6 +396,12 @@ CToken* lex_all(CLexer* lex, int* out_count) {
             continue;
         }
 
+        /* Identifiers and keywords */
+        if (isalpha((unsigned char)current_char(lex)) || current_char(lex) == '_') {
+            tarray_push(&arr, lex_identifier(lex));
+            continue;
+        }
+
         /* Numeric literals */
         if (isdigit((unsigned char)current_char(lex))) {
             tarray_push(&arr, lex_number(lex));
@@ -379,6 +460,40 @@ static const char* token_type_name(TokenType t) {
         case TT_RBRACE:       return "RBRACE";
         case TT_COMMA:        return "COMMA";
         case TT_COLON:        return "COLON";
+        case TT_IDENTIFIER:   return "IDENTIFIER";
+        case TT_IF:           return "IF";
+        case TT_ELIF:         return "ELIF";
+        case TT_ELSE:         return "ELSE";
+        case TT_WHILE:        return "WHILE";
+        case TT_FOR:          return "FOR";
+        case TT_TO:           return "TO";
+        case TT_IN:           return "IN";
+        case TT_STEP:         return "STEP";
+        case TT_TRUE:         return "TRUE";
+        case TT_FALSE:        return "FALSE";
+        case TT_NULL:         return "NULL";
+        case TT_AND:          return "AND";
+        case TT_OR:           return "OR";
+        case TT_NOT:          return "NOT";
+        case TT_FUNCTION:     return "FUNCTION";
+        case TT_RETURN:       return "RETURN";
+        case TT_FN:           return "FN";
+        case TT_IMPORT:       return "IMPORT";
+        case TT_FROM:         return "FROM";
+        case TT_AS:           return "AS";
+        case TT_ATTEMPT:      return "ATTEMPT";
+        case TT_RESCUE:       return "RESCUE";
+        case TT_FINALLY:      return "FINALLY";
+        case TT_ALERT:        return "ALERT";
+        case TT_BREAK:        return "BREAK";
+        case TT_CONTINUE:     return "CONTINUE";
+        case TT_PASS:         return "PASS";
+        case TT_CLASS:        return "CLASS";
+        case TT_SELF:         return "SELF";
+        case TT_EXTENDS:      return "EXTENDS";
+        case TT_SWITCH:       return "SWITCH";
+        case TT_CASE:         return "CASE";
+        case TT_MATCH:        return "MATCH";
         case TT_EOF:          return "EOF";
         case TT_ERROR:        return "ERROR";
         default:              return "UNKNOWN";
@@ -460,6 +575,41 @@ int main(void) {
     lexer_init(&lex, "1 + 20");
     tokens = lex_all(&lex, &count);
     printf("  expect: INT col=1, PLUS col=3, INT col=5, EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 9: plain identifier ────────────────────────────────────────── */
+    printf("\nTest 9: identifier\n");
+    lexer_init(&lex, "myVar");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: IDENTIFIER(myVar)  EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 10: keywords are not identifiers ───────────────────────────── */
+    printf("\nTest 10: keywords\n");
+    lexer_init(&lex, "if while function return true false null");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: IF WHILE FUNCTION RETURN TRUE FALSE NULL EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 11: keyword prefix is still an identifier ──────────────────── */
+    printf("\nTest 11: keyword-prefix identifier\n");
+    lexer_init(&lex, "iffy forLoop");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: IDENTIFIER(iffy)  IDENTIFIER(forLoop)  EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 12: real Luz statement ─────────────────────────────────────── */
+    printf("\nTest 12: assignment statement\n");
+    lexer_init(&lex, "x = 1 + y");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: IDENTIFIER(x) ASSIGN INT(1) PLUS IDENTIFIER(y) EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 13: underscore identifier ─────────────────────────────────── */
+    printf("\nTest 13: underscore identifier\n");
+    lexer_init(&lex, "_private _x2");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: IDENTIFIER(_private)  IDENTIFIER(_x2)  EOF\n");
     print_and_free(tokens, count);
 
     printf("\nStage 2 OK\n");
