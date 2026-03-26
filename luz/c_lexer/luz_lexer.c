@@ -45,6 +45,16 @@ static char peek_char(const CLexer* lex) {
     return '\0';
 }
 
+/* peek2_char() looks two steps ahead without consuming anything.
+ * Needed for three-character tokens: '...' and '**='.
+ * Returns '\0' if there are fewer than two characters remaining.
+ */
+static char peek2_char(const CLexer* lex) {
+    if (lex->pos + 2 < lex->length)
+        return lex->source[lex->pos + 2];
+    return '\0';
+}
+
 /* advance() moves the position forward by one character and keeps line/col
  * in sync.  This is the single choke-point through which every consumed
  * character passes - the same design as the Python lexer.
@@ -130,6 +140,147 @@ static int tarray_push(TokenArray* arr, CToken token) {
 }
 
 
+/* ── Stage 2: numbers and operators ─────────────────────────────────────────*/
+
+/* lex_number() is called when current_char is a digit.
+ * It consumes all consecutive digits, then checks for a decimal point
+ * followed by at least one more digit (a bare trailing dot, e.g. "1.",
+ * is NOT a float — it would be an integer followed by a DOT token).
+ * The collected characters are stored in a fixed-size local buffer;
+ * 63 digits is far more than any realistic numeric literal needs.
+ */
+static CToken lex_number(CLexer* lex) {
+    int line = lex->line, col = lex->col;
+    char buf[64];
+    int  i = 0;
+    int  is_float = 0;
+
+    /* Consume the integer part */
+    while (current_char(lex) != '\0' && isdigit((unsigned char)current_char(lex))) {
+        buf[i++] = current_char(lex);
+        advance(lex);
+    }
+
+    /* Optional fractional part: dot followed by at least one digit */
+    if (current_char(lex) == '.' && isdigit((unsigned char)peek_char(lex))) {
+        is_float    = 1;
+        buf[i++]    = '.';
+        advance(lex);   /* consume the '.' */
+        while (current_char(lex) != '\0' && isdigit((unsigned char)current_char(lex))) {
+            buf[i++] = current_char(lex);
+            advance(lex);
+        }
+    }
+
+    buf[i] = '\0';
+    return make_value_token(is_float ? TT_FLOAT : TT_INT, buf, line, col);
+}
+
+
+/* lex_operator() is called for any character that is not whitespace, a
+ * comment, a digit, a letter or a quote.  It reads current_char (and up
+ * to two chars ahead) to decide which token to emit, then advances past
+ * every character it consumed.
+ *
+ * Single-char tokens (LPAREN, COMMA, …) advance once.
+ * Two-char tokens (EE, POW, ARROW, …) advance twice.
+ * Three-char tokens (ELLIPSIS, POW_ASSIGN) advance three times.
+ *
+ * '!' alone and '?' alone are illegal in Luz; they produce TT_ERROR so
+ * the Python side can report a meaningful message.
+ */
+static CToken lex_operator(CLexer* lex) {
+    int  line = lex->line, col = lex->col;
+    char c    = current_char(lex);
+    char p    = peek_char(lex);
+    char p2   = peek2_char(lex);
+    char buf[2];
+
+    switch (c) {
+        case '+':
+            advance(lex);
+            if (p == '=') { advance(lex); return make_token(TT_PLUS_ASSIGN,  line, col); }
+            return make_token(TT_PLUS, line, col);
+
+        case '-':
+            advance(lex);
+            if (p == '=') { advance(lex); return make_token(TT_MINUS_ASSIGN, line, col); }
+            if (p == '>') { advance(lex); return make_token(TT_ARROW,        line, col); }
+            return make_token(TT_MINUS, line, col);
+
+        case '*':
+            advance(lex);
+            if (p == '*') {
+                advance(lex);
+                if (p2 == '=') { advance(lex); return make_token(TT_POW_ASSIGN, line, col); }
+                return make_token(TT_POW, line, col);
+            }
+            if (p == '=') { advance(lex); return make_token(TT_MUL_ASSIGN, line, col); }
+            return make_token(TT_MUL, line, col);
+
+        case '/':
+            advance(lex);
+            if (p == '/') { advance(lex); return make_token(TT_IDIV,       line, col); }
+            if (p == '=') { advance(lex); return make_token(TT_DIV_ASSIGN, line, col); }
+            return make_token(TT_DIV, line, col);
+
+        case '%':
+            advance(lex);
+            if (p == '=') { advance(lex); return make_token(TT_MOD_ASSIGN, line, col); }
+            return make_token(TT_MOD, line, col);
+
+        case '=':
+            advance(lex);
+            if (p == '=') { advance(lex); return make_token(TT_EE,     line, col); }
+            return make_token(TT_ASSIGN, line, col);
+
+        case '!':
+            advance(lex);
+            if (p == '=') { advance(lex); return make_token(TT_NE, line, col); }
+            buf[0] = c; buf[1] = '\0';
+            return make_value_token(TT_ERROR, buf, line, col);
+
+        case '<':
+            advance(lex);
+            if (p == '=') { advance(lex); return make_token(TT_LTE, line, col); }
+            return make_token(TT_LT, line, col);
+
+        case '>':
+            advance(lex);
+            if (p == '=') { advance(lex); return make_token(TT_GTE, line, col); }
+            return make_token(TT_GT, line, col);
+
+        case '?':
+            advance(lex);
+            if (p == '?') { advance(lex); return make_token(TT_NULL_COALESCE, line, col); }
+            buf[0] = c; buf[1] = '\0';
+            return make_value_token(TT_ERROR, buf, line, col);
+
+        case '.':
+            advance(lex);
+            if (p == '.' && p2 == '.') {
+                advance(lex); advance(lex);
+                return make_token(TT_ELLIPSIS, line, col);
+            }
+            return make_token(TT_DOT, line, col);
+
+        case '(': advance(lex); return make_token(TT_LPAREN,   line, col);
+        case ')': advance(lex); return make_token(TT_RPAREN,   line, col);
+        case '[': advance(lex); return make_token(TT_LBRACKET, line, col);
+        case ']': advance(lex); return make_token(TT_RBRACKET, line, col);
+        case '{': advance(lex); return make_token(TT_LBRACE,   line, col);
+        case '}': advance(lex); return make_token(TT_RBRACE,   line, col);
+        case ',': advance(lex); return make_token(TT_COMMA,    line, col);
+        case ':': advance(lex); return make_token(TT_COLON,    line, col);
+
+        default:
+            buf[0] = c; buf[1] = '\0';
+            advance(lex);
+            return make_value_token(TT_ERROR, buf, line, col);
+    }
+}
+
+
 /*── Public API ──────────────────────────────────────────────────────────────*/
 
 void lexer_init(CLexer* lex, const char* source) {
@@ -158,7 +309,7 @@ CToken* lex_all(CLexer* lex, int* out_count) {
     }
 
     while (current_char(lex) != '\0') {
-        /* Skip Whitespace - produces no tokens */
+        /* Skip whitespace - produces no tokens */
         if (isspace((unsigned char)current_char(lex))) {
             skip_whitespace(lex);
             continue;
@@ -170,12 +321,14 @@ CToken* lex_all(CLexer* lex, int* out_count) {
             continue;
         }
 
-        {
-            char buf[2] = { current_char(lex), '\0' };
-            int line = lex->line, col = lex->col;
-            advance(lex);
-            tarray_push(&arr, make_value_token(TT_ERROR, buf, line, col));
+        /* Numeric literals */
+        if (isdigit((unsigned char)current_char(lex))) {
+            tarray_push(&arr, lex_number(lex));
+            continue;
         }
+
+        /* Operators and punctuation */
+        tarray_push(&arr, lex_operator(lex));
     }
 
     tarray_push(&arr, make_token(TT_EOF, lex->line, lex->col));
@@ -191,73 +344,125 @@ CToken* lex_all(CLexer* lex, int* out_count) {
 #ifdef LUZ_TEST
 
 static const char* token_type_name(TokenType t) {
-    switch (t)
-    {
-        case TT_EOF: return "EOF";
-        case TT_ERROR: return "ERROR";
-        default:       return "UNKNOWN";
+    switch (t) {
+        case TT_INT:          return "INT";
+        case TT_FLOAT:        return "FLOAT";
+        case TT_PLUS:         return "PLUS";
+        case TT_MINUS:        return "MINUS";
+        case TT_MUL:          return "MUL";
+        case TT_DIV:          return "DIV";
+        case TT_MOD:          return "MOD";
+        case TT_POW:          return "POW";
+        case TT_IDIV:         return "IDIV";
+        case TT_ASSIGN:       return "ASSIGN";
+        case TT_EE:           return "EE";
+        case TT_NE:           return "NE";
+        case TT_LT:           return "LT";
+        case TT_GT:           return "GT";
+        case TT_LTE:          return "LTE";
+        case TT_GTE:          return "GTE";
+        case TT_PLUS_ASSIGN:  return "PLUS_ASSIGN";
+        case TT_MINUS_ASSIGN: return "MINUS_ASSIGN";
+        case TT_MUL_ASSIGN:   return "MUL_ASSIGN";
+        case TT_DIV_ASSIGN:   return "DIV_ASSIGN";
+        case TT_MOD_ASSIGN:   return "MOD_ASSIGN";
+        case TT_POW_ASSIGN:   return "POW_ASSIGN";
+        case TT_ARROW:        return "ARROW";
+        case TT_NULL_COALESCE:return "NULL_COALESCE";
+        case TT_DOT:          return "DOT";
+        case TT_ELLIPSIS:     return "ELLIPSIS";
+        case TT_LPAREN:       return "LPAREN";
+        case TT_RPAREN:       return "RPAREN";
+        case TT_LBRACKET:     return "LBRACKET";
+        case TT_RBRACKET:     return "RBRACKET";
+        case TT_LBRACE:       return "LBRACE";
+        case TT_RBRACE:       return "RBRACE";
+        case TT_COMMA:        return "COMMA";
+        case TT_COLON:        return "COLON";
+        case TT_EOF:          return "EOF";
+        case TT_ERROR:        return "ERROR";
+        default:              return "UNKNOWN";
     }
 }
 
-int main(void) {
-    {
-        CLexer lex;
-        lexer_init(&lex, "ab\ncd");
-
-        printf("char='%c' line=%d col=%d  (expect line=1 col=1)\n",
-                current_char(&lex), lex.line, lex.col);
-        advance(&lex);
-
-        printf("char='%c' line=%d col=%d  (expect line=1 col=2)\n",
-                current_char(&lex), lex.line, lex.col);
-        advance(&lex);
-
-        advance(&lex);
-        
-        printf("char='%c' line=%d col=%d  (expect line=2 col=1)\n",
-                current_char(&lex), lex.line, lex.col);
-        advance(&lex);
-
-        printf("char='%c' line=%d col=%d  (expect line=2 col=1)\n",
-                current_char(&lex), lex.line, lex.col);
-        advance(&lex);
-
-        printf("at end: char='%c' (expect'\\0')\n", current_char(&lex));
-    }
-
-    printf("\n");
-
-    {
-        CLexer lex;
-        int count, i;
-        CToken* tokens;
-
-        lexer_init(&lex, "   \n   \n   ");
-        tokens = lex_all(&lex, &count);
-
-        printf("Token count for whitespace-only: %d   (expect 1)\n", count);
-        for (i = 0; i < count; i++) {
-            printf("  [%d] type=%s line=%d col=%d\n",
+/* Helper: print every token in an array and free it */
+static void print_and_free(CToken* tokens, int count) {
+    int i;
+    for (i = 0; i < count; i++) {
+        if (tokens[i].value)
+            printf("  [%d] %-14s value=%-10s line=%d col=%d\n",
+                   i, token_type_name(tokens[i].type),
+                   tokens[i].value, tokens[i].line, tokens[i].col);
+        else
+            printf("  [%d] %-14s line=%d col=%d\n",
                    i, token_type_name(tokens[i].type),
                    tokens[i].line, tokens[i].col);
-        }
-        free_tokens(tokens, count);
     }
-    printf("\n");
+    free_tokens(tokens, count);
+}
 
-    {
-        CLexer lex;
-        int count;
-        CToken* tokens;
+int main(void) {
+    CLexer  lex;
+    CToken* tokens;
+    int     count;
 
-        lexer_init(&lex, "# this is a comment\n#another one\n");
-        tokens = lex_all(&lex, &count);
+    /* ── Test 1: integer literal ─────────────────────────────────────── */
+    printf("Test 1: integer\n");
+    lexer_init(&lex, "42");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: INT(42)  EOF\n");
+    print_and_free(tokens, count);
 
-        printf("Token count after two comments: %d  (expect 1)\n", count);
-        free_tokens(tokens, count);
-    }
+    /* ── Test 2: float literal ───────────────────────────────────────── */
+    printf("\nTest 2: float\n");
+    lexer_init(&lex, "3.14");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: FLOAT(3.14)  EOF\n");
+    print_and_free(tokens, count);
 
-    printf("\nStage 1 OK\n");
+    /* ── Test 3: bare dot is NOT a float ─────────────────────────────── */
+    printf("\nTest 3: trailing dot stays INT + DOT\n");
+    lexer_init(&lex, "1.");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: INT(1)  DOT  EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 4: simple expression ───────────────────────────────────── */
+    printf("\nTest 4: simple expression\n");
+    lexer_init(&lex, "1 + 2 * 3");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: INT(1) PLUS INT(2) MUL INT(3) EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 5: two-char operators ──────────────────────────────────── */
+    printf("\nTest 5: two-char operators\n");
+    lexer_init(&lex, "== != <= >= ** // -> ??");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: EE NE LTE GTE POW IDIV ARROW NULL_COALESCE EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 6: compound assignment ─────────────────────────────────── */
+    printf("\nTest 6: compound assignment\n");
+    lexer_init(&lex, "+= -= *= /= %= **=");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: PLUS_ASSIGN MINUS_ASSIGN MUL_ASSIGN DIV_ASSIGN MOD_ASSIGN POW_ASSIGN EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 7: ellipsis vs dot ─────────────────────────────────────── */
+    printf("\nTest 7: ellipsis vs dot\n");
+    lexer_init(&lex, "... .");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: ELLIPSIS DOT EOF\n");
+    print_and_free(tokens, count);
+
+    /* ── Test 8: column tracking across operators ─────────────────────── */
+    printf("\nTest 8: column tracking\n");
+    lexer_init(&lex, "1 + 20");
+    tokens = lex_all(&lex, &count);
+    printf("  expect: INT col=1, PLUS col=3, INT col=5, EOF\n");
+    print_and_free(tokens, count);
+
+    printf("\nStage 2 OK\n");
     return 0;
 }
 
