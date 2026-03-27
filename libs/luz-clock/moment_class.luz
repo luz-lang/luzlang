@@ -1,78 +1,77 @@
 # moment_class.luz - Moment class
 
 class Moment {
-    function init(ts) {
-        self.ts = ts 
-        # Cache the dict so field accessors dont call the builtin every time
+    function init(self, ts) {
+        self.ts = ts
         self._d = _clock_from_stamp(ts)
     }
 
-    function add_secs(n) {
+    function add_secs(self, n) {
         return Moment(self.ts + n)
     }
 
-    function add_mins(n) {
+    function add_mins(self, n) {
         return Moment(self.ts + n * 60)
     }
 
-    function add_hours(n) {
-        return Moment(self.ts + n * 360)
+    function add_hours(self, n) {
+        return Moment(self.ts + n * 3600)
     }
 
-    function add_days(n) {
+    function add_days(self, n) {
         return Moment(self.ts + n * 86400)
     }
 
-    function format(pattern) {
+    function format(self, pattern) {
         return _clock_fmt_stamp(self.ts, pattern)
     }
 
-    function since() {
+    function since(self) {
         return _clock_stamp() - self.ts
     }
 
-    function diff(other) {
+    function diff(self, other) {
         d = other.ts - self.ts
         if d < 0 { return 0 - d }
-        return d 
+        return d
     }
 
-    function year() { return self._d["year"] }
-    function month() { return self._d["month"] }
-    function day() { return self._d["day"] }
-    function hour() { return self._d["hour"] }
-    function min() { return self._d["min"] }
-    function sec() { return self._d["sec"] }
-    function weekday() { return self._d["weekday"] }
+    function year(self)    { return self._d["year"] }
+    function month(self)   { return self._d["month"] }
+    function day(self)     { return self._d["day"] }
+    function hour(self)    { return self._d["hour"] }
+    function min(self)     { return self._d["min"] }
+    function sec(self)     { return self._d["sec"] }
+    function weekday(self) { return self._d["weekday"] }
 
-    function day_name() {
+    function day_name(self) {
         names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         return names[self.weekday()]
     }
 
-    function month_name() {
-        names = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
-                "October", "November", "December"]
+    function month_name(self) {
+        names = ["January", "February", "March", "April", "May", "June", "July",
+                 "August", "September", "October", "November", "December"]
         return names[self.month() - 1]
     }
 
-    function to_stamp() {
+    function to_stamp(self) {
         return self.ts
     }
 
-    function to_dict() {
+    function to_dict(self) {
         return self._d
     }
+}
 
-    function moment_now() {
-        return Moment(_clock_stamp())
-    }
+function moment_now() {
+    return Moment(_clock_stamp())
+}
 
-    function moment_from(ts) {
-        return Moment(ts)
-    }
+function moment_from(ts) {
+    return Moment(ts)
+}
 
-    function moment_parse(date_str, pattern) {
-        return Moment(_clock_parse(date_str, pattern))
-    }
+function moment_parse(date_str, pattern) {
+    return Moment(_clock_parse(date_str, pattern))
 }

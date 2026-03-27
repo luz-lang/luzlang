@@ -1,0 +1,165 @@
+# dataset.luz — DataSet class
+#
+# Wraps a list of numbers and exposes statistical operations as dot methods.
+# Methods that return a derived list produce a new DataSet, so calls can chain:
+#
+#   DataSet([4, 1, 7, 2]).sorted().median()
+#
+# Constructor:
+#   DataSet(list)  — list must contain only numbers
+
+class DataSet {
+    function init(self, data) {
+        if len(data) == 0 { alert "DataSet: list cannot be empty" }
+        self.data = data
+    }
+
+    # ── Basic aggregates ──────────────────────────────────────────────────
+
+    # Number of elements in the dataset
+    function size(self) {
+        return len(self.data)
+    }
+
+    # Sum of all elements
+    function total(self) {
+        acc = 0
+        for x in self.data { acc = acc + x }
+        return acc
+    }
+
+    # Smallest value
+    function minimum(self) {
+        return min(self.data)
+    }
+
+    # Largest value
+    function maximum(self) {
+        return max(self.data)
+    }
+
+    # Difference between maximum and minimum
+    function range(self) {
+        return self.maximum() - self.minimum()
+    }
+
+    # ── Central tendency ──────────────────────────────────────────────────
+
+    function mean(self) {
+        return self.total() / self.size()
+    }
+
+    function median(self) {
+        s   = self.sorted()
+        mid = s.size() // 2
+        if even(s.size()) {
+            return (s.data[mid - 1] + s.data[mid]) / 2
+        }
+        return s.data[mid]
+    }
+
+    # Most frequent value — returns the first one found if there is a tie
+    function mode(self) {
+        best_val   = self.data[0]
+        best_count = 0
+        for candidate in self.data {
+            c = 0
+            for x in self.data {
+                if x == candidate { c = c + 1 }
+            }
+            if c > best_count {
+                best_count = c
+                best_val   = candidate
+            }
+        }
+        return best_val
+    }
+
+    # ── Dispersion ────────────────────────────────────────────────────────
+
+    function variance(self) {
+        m     = self.mean()
+        total = 0
+        for x in self.data { total = total + (x - m) * (x - m) }
+        return total / self.size()
+    }
+
+    function std_dev(self) {
+        return sqrt(self.variance())
+    }
+
+    # ── Order and selection ───────────────────────────────────────────────
+
+    # Returns a new DataSet with the elements in ascending order
+    function sorted(self) {
+        s = []
+        for x in self.data { append(s, x) }
+        i = 1
+        while i < len(s) {
+            key = s[i]
+            j   = i - 1
+            while j >= 0 and s[j] > key {
+                s[j + 1] = s[j]
+                j = j - 1
+            }
+            s[j + 1] = key
+            i = i + 1
+        }
+        return DataSet(s)
+    }
+
+    # p-th percentile (0-100). Uses the nearest-rank method.
+    function percentile(self, p) {
+        if p < 0 or p > 100 { alert "percentile: p must be between 0 and 100" }
+        s   = self.sorted()
+        idx = round((p / 100) * (s.size() - 1))
+        return s.data[idx]
+    }
+
+    # ── Transformation — each returns a new DataSet ───────────────────────
+
+    # Normalize values to the [0, 1] range
+    function normalize(self) {
+        lo = self.minimum()
+        hi = self.maximum()
+        if hi == lo { alert "normalize: all values are equal, cannot normalize" }
+        result = []
+        for x in self.data { append(result, (x - lo) / (hi - lo)) }
+        return DataSet(result)
+    }
+
+    # Apply a function to every element, returns a new DataSet
+    function map(self, f) {
+        result = []
+        for x in self.data { append(result, f(x)) }
+        return DataSet(result)
+    }
+
+    # Keep only elements where f(x) is true, returns a new DataSet
+    function filter(self, f) {
+        result = []
+        for x in self.data {
+            if f(x) { append(result, x) }
+        }
+        if len(result) == 0 { alert "filter: no elements matched the condition" }
+        return DataSet(result)
+    }
+
+    # ── Output ────────────────────────────────────────────────────────────
+
+    # Returns the underlying list
+    function to_list(self) {
+        return self.data
+    }
+
+    # Prints a summary of the dataset
+    function summary(self) {
+        write($"count:   {self.size()}")
+        write($"min:     {self.minimum()}")
+        write($"max:     {self.maximum()}")
+        write($"range:   {self.range()}")
+        write($"mean:    {self.mean()}")
+        write($"median:  {self.median()}")
+        write($"std_dev: {self.std_dev()}")
+    }
+}
