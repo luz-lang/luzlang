@@ -484,6 +484,44 @@ class TestImports:
         assert not any("nonexistent" in p for p in interp.imported_files)
 
 
+class TestBuiltinIndexInsert:
+    def test_index_found(self):
+        assert val('index([10, 20, 30], 20)') == 1
+
+    def test_index_not_found(self):
+        assert val('index([10, 20, 30], 99)') == -1
+
+    def test_index_first_element(self):
+        assert val('index(["a", "b", "c"], "a")') == 0
+
+    def test_index_empty_list(self):
+        assert val('index([], 1)') == -1
+
+    def test_index_non_list_raises(self):
+        with pytest.raises(Exception):
+            val('index("hello", "e")')
+
+    def test_insert_basic(self):
+        assert env('xs = [1, 2, 3]\ninsert(xs, 1, 99)\nxs', 'xs') == [1, 99, 2, 3]
+
+    def test_insert_at_end(self):
+        assert env('xs = [1, 2]\ninsert(xs, 2, 99)\nxs', 'xs') == [1, 2, 99]
+
+    def test_insert_at_start(self):
+        assert env('xs = [1, 2]\ninsert(xs, 0, 99)\nxs', 'xs') == [99, 1, 2]
+
+    def test_insert_returns_null(self):
+        assert val('xs = [1]\ninsert(xs, 0, 99)') is None
+
+    def test_insert_non_list_raises(self):
+        with pytest.raises(Exception):
+            val('insert("hello", 0, "x")')
+
+    def test_insert_non_int_index_raises(self):
+        with pytest.raises(Exception):
+            val('xs = [1]\ninsert(xs, "a", 99)')
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

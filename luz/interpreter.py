@@ -402,6 +402,8 @@ class Interpreter:
             'sign': self.builtin_sign,
             'odd': self.builtin_odd,
             'even': self.builtin_even,
+            'index': self.builtin_index,
+            'insert': self.builtin_insert,
             # Trigonometric Functions - all angles in radians
             'sin': self.builtin_sin,
             'cos': self.builtin_cos,
@@ -1770,6 +1772,24 @@ class Interpreter:
     def builtin_even(self, x):
         self._require_num(x, 'even')
         return int(x) % 2 == 0
+
+    def builtin_index(self, list_obj, value):
+        """Return the index of value in list, or -1 if not found."""
+        if not isinstance(list_obj, list):
+            raise ArgumentFault("index() requires a list as its first argument")
+        try:
+            return list_obj.index(value)
+        except ValueError:
+            return -1
+
+    def builtin_insert(self, list_obj, index, value):
+        """Insert value at index in list. Returns null."""
+        if not isinstance(list_obj, list):
+            raise ArgumentFault("insert() requires a list as its first argument")
+        if not isinstance(index, int):
+            raise TypeViolationFault("Index for insert() must be an integer")
+        list_obj.insert(index, value)
+        return None
 
     # ── Random primitives (used by luz-random stdlib) ──────────────────────────
 
