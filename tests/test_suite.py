@@ -644,6 +644,52 @@ greet(Cat("Kitty"))
             val(code)
 
 
+# ── Typed variable declarations ──────────────────────────────────────────────
+
+class TestTypedVariables:
+    def test_basic_declaration(self):
+        assert env("x: int = 5", "x") == 5
+
+    def test_correct_reassignment(self):
+        assert env("x: int = 5\nx = 10", "x") == 10
+
+    def test_wrong_initial_value_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('x: int = "hola"')
+
+    def test_wrong_reassignment_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('x: int = 5\nx = "hola"')
+
+    def test_string_type(self):
+        assert env('s: string = "hola"', "s") == "hola"
+
+    def test_bool_type(self):
+        assert env("b: bool = true", "b") is True
+
+    def test_float_type(self):
+        assert env("f: float = 3.14", "f") == 3.14
+
+    def test_list_type(self):
+        assert env("l: list = [1, 2, 3]", "l") == [1, 2, 3]
+
+    def test_dict_type(self):
+        assert env('d: dict = {"a": 1}', "d") == {"a": 1}
+
+    def test_null_type(self):
+        assert env("x: null = null", "x") is None
+
+    def test_bool_not_accepted_as_int(self):
+        with pytest.raises(TypeViolationFault):
+            val("x: int = true")
+
+    def test_untyped_var_unchanged(self):
+        assert env('x = 5\nx = "hola"', "x") == "hola"
+
+    def test_typed_var_in_function(self):
+        assert val("function f() { x: int = 10\nx = 20\nreturn x }\nf()") == 20
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
