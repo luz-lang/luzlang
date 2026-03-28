@@ -70,7 +70,7 @@ class Environment:
         self.records[name] = value
         return value
     
-    def define_types(self, name, value, type_name):
+    def define_typed(self, name, value, type_name):
         self.records[name] = value
         self.types[name] = type_name
         return value
@@ -955,6 +955,15 @@ class Interpreter:
         var_name = node.var_name_token.value
         value = self.visit(node.value_node)
         self.current_env.assign(var_name, value)
+        return value
+    
+    def visit_TypedVarAssignNode(self, node):
+        var_name = node.var_token.value
+        value = self.visit(node.value_node)
+        if not self._check_type(value, node.type_name):
+            raise TypeViolationFault(f"Variable '{var_name}' expects type '{node.type_name}', "
+                                     f"got '{self._luz_type_name(value)}'")
+        self.current_env.define_typed(var_name, value, node.type_name)
         return value
 
     # visit_VarAccessNode() retrieves the value of a variable by walking the
