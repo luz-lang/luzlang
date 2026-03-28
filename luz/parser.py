@@ -707,9 +707,9 @@ class Parser:
             self.advance()
             if self.current_token.type == TokenType.COLON:
                 self.advance()
-                if self.current_token.type != TokenType.IDENTIFIER:
+                if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
                     raise UnexpectedTokenFault("Expected type name after ':'")
-                arg_types.append(self.current_token.value)
+                arg_types.append('null' if self.current_token.type == TokenType.NULL else self.current_token.value)
                 self.advance()
             else:
                 arg_types.append(None)
@@ -737,9 +737,9 @@ class Parser:
         return_type = None
         if self.current_token.type == TokenType.ARROW:
             self.advance()
-            if self.current_token.type != TokenType.IDENTIFIER:
+            if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
                 raise UnexpectedTokenFault("Expected type name after '->'")
-            return_type = self.current_token.value 
+            return_type = 'null' if self.current_token.type == TokenType.NULL else self.current_token.value 
             self.advance()
 
         if self.current_token.type != TokenType.LBRACE:

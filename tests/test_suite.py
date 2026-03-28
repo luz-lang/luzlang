@@ -573,6 +573,77 @@ class TestBuiltinsReverseAnyAll:
             val('all("hello")')
 
 
+# ── Optional type annotations ────────────────────────────────────────────────
+
+class TestTypeAnnotations:
+    def test_no_types_still_works(self):
+        assert val("function f(x) { return x * 2 }\nf(5)") == 10
+
+    def test_correct_arg_type_passes(self):
+        assert val("function f(x: int) { return x + 1 }\nf(5)") == 6
+
+    def test_wrong_arg_type_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('function f(x: int) { return x }\nf("hola")')
+
+    def test_correct_return_type_passes(self):
+        assert val("function f() -> int { return 42 }  f()") == 42
+
+    def test_wrong_return_type_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('function f() -> int { return "hola" }  f()')
+
+    def test_missing_return_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val("function f() -> int { }  f()")
+
+    def test_return_null_type_no_return(self):
+        assert val("function f() -> null { }  f()") is None
+
+    def test_multiple_typed_params(self):
+        assert val('function f(a: int, b: string) { return b }\nf(1, "ok")') == "ok"
+
+    def test_mixed_typed_and_untyped_params(self):
+        assert val("function f(a: int, b) { return a + b }\nf(3, 7)") == 10
+
+    def test_bool_type(self):
+        assert val("function f(x: bool) { return x }\nf(true)") is True
+
+    def test_bool_not_accepted_as_int(self):
+        with pytest.raises(TypeViolationFault):
+            val("function f(x: int) { return x }\nf(true)")
+
+    def test_float_type(self):
+        assert val("function f(x: float) { return x }\nf(3.14)") == 3.14
+
+    def test_list_type(self):
+        assert val("function f(x: list) { return x }\nf([1, 2, 3])") == [1, 2, 3]
+
+    def test_dict_type(self):
+        assert val('function f(x: dict) { return x }\nf({"a": 1})') == {"a": 1}
+
+    def test_null_type(self):
+        assert val("function f(x: null) { return x }\nf(null)") is None
+
+    def test_class_instance_type(self):
+        code = """
+class Dog { function init(self, name) { self.name = name } }
+function greet(d: Dog) { return d.name }
+greet(Dog("Rex"))
+"""
+        assert val(code) == "Rex"
+
+    def test_class_instance_wrong_type_raises(self):
+        code = """
+class Dog { function init(self, name) { self.name = name } }
+class Cat { function init(self, name) { self.name = name } }
+function greet(d: Dog) { return d.name }
+greet(Cat("Kitty"))
+"""
+        with pytest.raises(TypeViolationFault):
+            val(code)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
