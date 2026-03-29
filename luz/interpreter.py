@@ -1832,7 +1832,7 @@ class Interpreter:
     def builtin_exp(self, x):
         self._require_num(x, 'exp')
         import math
-        return math.log(x)
+        return math.exp(x)
     
     def builtin_ln(self, x):
         self._require_num(x, 'ln')
