@@ -1628,15 +1628,21 @@ class Interpreter:
         obj = self.visit(node.obj_node)
         args = [self.visit(arg) for arg in node.arguments]
         kwargs = {name: self.visit(expr) for name, expr in node.kwargs.items()}
+        def _require_args(method, given, expected):
+            if given != expected:
+                raise ArityFault(f"{method}() requires {expected} argument{'s' if expected != 1 else ''}, got {given}")
+
         if isinstance(obj, str):
+            method_name = node.method_token.value
+            if method_name == 'swap':
+                _require_args('swap', len(args), 2)
+                return obj.replace(args[0], args[1])
             str_methods = {
                 'uppercase': lambda: obj.upper(),
                 'lowercase': lambda: obj.lower(),
                 'trim': lambda: obj.strip(),
-                'swap': lambda: obj.replace(args[0], args[1]),
                 'split': lambda: obj.split(args[0]) if args else obj.split(),
             }
-            method_name = node.method_token.value
             if method_name in str_methods:
                 return str_methods[method_name]()
             raise InvalidUsageFault(f"String has no method '{method_name}'")
@@ -1667,12 +1673,18 @@ class Interpreter:
         # List method dot syntax: [1,2,3].append(4), list.pop(), etc.
         if isinstance(obj, list):
             method_name = node.method_token.value
+            if method_name == 'append':
+                _require_args('append', len(args), 1)
+                return self.builtin_append(obj, args[0])
+            if method_name == 'contains':
+                _require_args('contains', len(args), 1)
+                return args[0] in obj
+            if method_name == 'join':
+                _require_args('join', len(args), 1)
+                return self.builtin_join(args[0], obj)
             list_methods = {
-                'append':   lambda: self.builtin_append(obj, args[0]),
                 'pop':      lambda: self.builtin_pop(obj, args[0] if args else None),
                 'len':      lambda: self.builtin_len(obj),
-                'contains': lambda: args[0] in obj,
-                'join':     lambda: self.builtin_join(args[0], obj),
             }
             if method_name in list_methods:
                 return list_methods[method_name]()
@@ -1681,12 +1693,16 @@ class Interpreter:
         # Dict method dot syntax: d.keys(), d.values(), d.len(), etc.
         if isinstance(obj, dict):
             method_name = node.method_token.value
+            if method_name == 'contains':
+                _require_args('contains', len(args), 1)
+                return args[0] in obj
+            if method_name == 'remove':
+                _require_args('remove', len(args), 1)
+                return self.builtin_remove(obj, args[0])
             dict_methods = {
                 'keys':     lambda: self.builtin_keys(obj),
                 'values':   lambda: self.builtin_values(obj),
                 'len':      lambda: self.builtin_len(obj),
-                'contains': lambda: args[0] in obj,
-                'remove':   lambda: self.builtin_remove(obj, args[0]),
             }
             if method_name in dict_methods:
                 return dict_methods[method_name]()
