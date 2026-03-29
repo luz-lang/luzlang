@@ -1038,7 +1038,7 @@ class Interpreter:
                 raise ZeroDivisionFault("Integer division by zero is not allowed")
             try:
                 return int(left) // int(right)
-            except TypeError:
+            except (TypeError, ValueError):
                 raise IllegalOperationFault(f"Unsupported operand types for '//': '{self._luz_type_name(left)}' and '{self._luz_type_name(right)}'")
 
         elif node.op_token.type == TokenType.MOD:
@@ -1054,10 +1054,14 @@ class Interpreter:
                 return left ** right
             except TypeError:
                 raise IllegalOperationFault(f"Unsupported operand types for '**': '{self._luz_type_name(left)}' and '{self._luz_type_name(right)}'")
+            except ZeroDivisionError:
+                raise ZeroDivisionFault("Zero cannot be raised to a negative power")
 
         elif node.op_token.type == TokenType.IN:
             if not isinstance(right, (list, str)):
                 raise TypeClashFault(f"'in' requires a list or string on the right, got '{self._luz_type_name(right)}'")
+            if isinstance(right, str) and not isinstance(left, str):
+                raise TypeClashFault(f"'in <string>' requires a string on the left, got '{self._luz_type_name(left)}'")
             return left in right
 
         elif node.op_token.type == TokenType.NOT_IN:
@@ -1556,6 +1560,8 @@ class Interpreter:
         self._require_str(s, 'split')
         if sep is not None:
             self._require_str(sep, 'split')
+            if sep == '':
+                raise ArgumentFault("split() separator cannot be an empty string")
         return s.split(sep)
 
     # join() concatenates a list of strings with a separator.
@@ -1799,7 +1805,9 @@ class Interpreter:
     # round(x) rounds to nearest integer; round(x, digits) keeps decimal places.
     def builtin_round(self, x, digits=0):
         self._require_num(x, 'round')
-        return round(x, int(digits))
+        if not isinstance(digits, int):
+            raise ArgumentFault(f"round() second argument must be an int, got '{self._luz_type_name(digits)}'")
+        return round(x, digits)
 
     # clamp(x, low, high) forces x into the [low, high] range.
     # Descriptive and not a Python builtin — handy for game logic, UI, etc.
