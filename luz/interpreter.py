@@ -796,7 +796,15 @@ class Interpreter:
                 pending_raise = re
 
         if node.finally_block:
-            self.execute_block(node.finally_block, Environment(self.current_env))
+            if pending_raise is not None:
+                # An error is already pending — run finally but don't let it
+                # overwrite the original error if it also raises.
+                try:
+                    self.execute_block(node.finally_block, Environment(self.current_env))
+                except Exception:
+                    pass
+            else:
+                self.execute_block(node.finally_block, Environment(self.current_env))
 
         if pending_raise is not None:
             raise pending_raise
@@ -914,13 +922,17 @@ class Interpreter:
                 self.current_env = temp_env
 
             if node.names is not None:
-                # from "x" import a, b  — copy selected names to current global env
+                # from "x" import a, b  — collect all names first so that a
+                # missing name doesn't leave partial definitions in scope.
+                collected = {}
                 for name_token in node.names:
                     n = name_token.value
                     try:
-                        self.global_env.define(n, module_env.lookup(n))
+                        collected[n] = module_env.lookup(n)
                     except UndefinedSymbolFault:
                         raise ImportFault(f"Module '{file_path}' has no name '{n}'")
+                for n, v in collected.items():
+                    self.global_env.define(n, v)
             else:
                 # import "x" as alias  — wrap everything in a LuzModule
                 mod_name = os.path.basename(file_path)
