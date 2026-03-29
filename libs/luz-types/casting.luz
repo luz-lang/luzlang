@@ -1,0 +1,27 @@
+# casting.luz — Safe type casting methods
+
+class Casting {
+    function safe_int(self, x) {
+        attempt {
+            return to_int(x)
+        } rescue(e) {
+            alert "cannot cast " + to_str(x) + " to int"
+        }
+    }
+
+    function safe_float(self, x) {
+        attempt {
+            return to_float(x)
+        } rescue(e) {
+            alert "cannot cast " + to_str(x) + " to float"
+        }
+    }
+
+    function safe_str(self, x) {
+        return to_str(x)
+    }
+
+    function safe_bool(self, x) {
+        return to_bool(x)
+    }
+}

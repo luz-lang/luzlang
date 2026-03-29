@@ -1,0 +1,42 @@
+# types.luz — luz-types entry point
+# Usage:
+#   from "luz-types" import types
+#   types.is_int(42)        # true
+#   types.safe_int("5")     # 5
+#   types.validate(data, schema)
+
+import "libs/luz-types/predicates.luz"
+import "libs/luz-types/casting.luz"
+import "libs/luz-types/validation.luz"
+
+class Types {
+    function init(self) {
+        self._pred = Predicates()
+        self._cast = Casting()
+        self._val  = Validator()
+    }
+
+    # — Predicates —
+    function is_int(self, x)      { return self._pred.is_int(x) }
+    function is_float(self, x)    { return self._pred.is_float(x) }
+    function is_number(self, x)   { return self._pred.is_number(x) }
+    function is_string(self, x)   { return self._pred.is_string(x) }
+    function is_bool(self, x)     { return self._pred.is_bool(x) }
+    function is_null(self, x)     { return self._pred.is_null(x) }
+    function is_list(self, x)     { return self._pred.is_list(x) }
+    function is_dict(self, x)     { return self._pred.is_dict(x) }
+    function is_callable(self, x) { return self._pred.is_callable(x) }
+
+    # — Safe casting —
+    function safe_int(self, x)   { return self._cast.safe_int(x) }
+    function safe_float(self, x) { return self._cast.safe_float(x) }
+    function safe_str(self, x)   { return self._cast.safe_str(x) }
+    function safe_bool(self, x)  { return self._cast.safe_bool(x) }
+
+    # — Validation —
+    function validate(self, data, schema, required) {
+        return self._val.validate(data, schema, required)
+    }
+}
+
+types = Types()

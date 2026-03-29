@@ -1,0 +1,36 @@
+# validation.luz — Dict schema validation
+
+class Validator {
+    # validate(data, schema) checks that every key in schema exists in data
+    # and that its value matches the declared type string.
+    #
+    # Optional: pass required=["key1", "key2"] to restrict which fields are
+    # mandatory. By default every key in schema is required.
+    #
+    # Raises on the first violation found.
+    function validate(self, data, schema, required) {
+        schema_keys = keys(schema)
+
+        for field in schema_keys {
+            is_required = true
+            if typeof(required) == "list" {
+                is_required = false
+                for r in required {
+                    if r == field { is_required = true }
+                }
+            }
+
+            if is_required and not data.contains(field) {
+                alert "missing required field '" + field + "'"
+            }
+
+            if data.contains(field) {
+                expected = schema[field]
+                actual   = typeof(data[field])
+                if actual != expected {
+                    alert "field '" + field + "' expected " + expected + ", got " + actual
+                }
+            }
+        }
+    }
+}

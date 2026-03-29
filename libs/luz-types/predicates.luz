@@ -1,0 +1,13 @@
+# predicates.luz — Type predicate methods
+
+class Predicates {
+    function is_int(self, x)      { return typeof(x) == "int" }
+    function is_float(self, x)    { return typeof(x) == "float" }
+    function is_number(self, x)   { return typeof(x) == "int" or typeof(x) == "float" }
+    function is_string(self, x)   { return typeof(x) == "string" }
+    function is_bool(self, x)     { return typeof(x) == "bool" }
+    function is_null(self, x)     { return typeof(x) == "null" }
+    function is_list(self, x)     { return typeof(x) == "list" }
+    function is_dict(self, x)     { return typeof(x) == "dict" }
+    function is_callable(self, x) { return typeof(x) == "function" }
+}
