@@ -1352,9 +1352,13 @@ class Interpreter:
             return isinstance(value, dict)
         if type_name == 'null':
             return value is None
-        # Class name - check instance and its class name
+        # Class name - walk the hierarchy to support inheritance
         if isinstance(value, LuzInstance):
-            return value.luz_class.name == type_name
+            cls = value.luz_class
+            while cls is not None:
+                if cls.name == type_name:
+                    return True
+                cls = cls.parent
         return False
     
     @staticmethod
