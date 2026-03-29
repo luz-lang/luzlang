@@ -1656,6 +1656,20 @@ class Interpreter:
                 return list_methods[method_name]()
             raise InvalidUsageFault(f"List has no method '{method_name}'")
 
+        # Dict method dot syntax: d.keys(), d.values(), d.len(), etc.
+        if isinstance(obj, dict):
+            method_name = node.method_token.value
+            dict_methods = {
+                'keys':     lambda: self.builtin_keys(obj),
+                'values':   lambda: self.builtin_values(obj),
+                'len':      lambda: self.builtin_len(obj),
+                'contains': lambda: args[0] in obj,
+                'remove':   lambda: self.builtin_remove(obj, args[0]),
+            }
+            if method_name in dict_methods:
+                return dict_methods[method_name]()
+            raise InvalidUsageFault(f"Dict has no method '{method_name}'")
+
         if not isinstance(obj, LuzInstance):
             raise InvalidUsageFault(f"Cannot call method on non-instance value '{obj}'")
 

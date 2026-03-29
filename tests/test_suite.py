@@ -690,6 +690,39 @@ class TestTypedVariables:
         assert val("function f() { x: int = 10\nx = 20\nreturn x }\nf()") == 20
 
 
+class TestDictDotMethods:
+    def test_keys(self):
+        assert val('keys({"a": 1, "b": 2})') == val('{"a": 1, "b": 2}.keys()')
+
+    def test_values(self):
+        assert val('values({"a": 1, "b": 2})') == val('{"a": 1, "b": 2}.values()')
+
+    def test_len(self):
+        assert val('{"a": 1, "b": 2}.len()') == 2
+
+    def test_len_empty(self):
+        assert val('{}.len()') == 0
+
+    def test_contains_true(self):
+        assert val('{"a": 1}.contains("a")') == True
+
+    def test_contains_false(self):
+        assert val('{"a": 1}.contains("z")') == False
+
+    def test_remove(self):
+        assert val('d = {"a": 1, "b": 2}\nd.remove("a")\nd.len()') == 1
+
+    def test_remove_key_gone(self):
+        assert val('d = {"a": 1, "b": 2}\nd.remove("b")\nd.keys()') == ["a"]
+
+    def test_invalid_method(self):
+        with pytest.raises(InvalidUsageFault):
+            val('{"a": 1}.nope()')
+
+    def test_chained_keys_len(self):
+        assert val('{"x": 1, "y": 2, "z": 3}.keys().len()') == 3
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
