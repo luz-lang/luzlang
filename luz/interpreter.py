@@ -1074,11 +1074,15 @@ class Interpreter:
                 raise TypeClashFault(f"'in' requires a list or string on the right, got '{self._luz_type_name(right)}'")
             if isinstance(right, str) and not isinstance(left, str):
                 raise TypeClashFault(f"'in <string>' requires a string on the left, got '{self._luz_type_name(left)}'")
+            if isinstance(right, dict):
+                return left in right.keys()
             return left in right
 
         elif node.op_token.type == TokenType.NOT_IN:
             if not isinstance(right, (list, str)):
                 raise TypeClashFault(f"'not in' requires a list or string on the right, got '{self._luz_type_name(right)}'")
+            if isinstance(right, dict):
+                return left not in right.keys()
             return left not in right
 
         # Equality operators work across any types (mixed-type comparison just
