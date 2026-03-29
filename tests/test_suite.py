@@ -723,6 +723,50 @@ class TestDictDotMethods:
         assert val('{"x": 1, "y": 2, "z": 3}.keys().len()') == 3
 
 
+class TestSlices:
+    def test_list_basic(self):
+        assert val('[1, 2, 3, 4, 5][1:3]') == [2, 3]
+
+    def test_list_from_start(self):
+        assert val('[1, 2, 3, 4, 5][:3]') == [1, 2, 3]
+
+    def test_list_to_end(self):
+        assert val('[1, 2, 3, 4, 5][2:]') == [3, 4, 5]
+
+    def test_list_step(self):
+        assert val('[1, 2, 3, 4, 5][::2]') == [1, 3, 5]
+
+    def test_list_step_with_range(self):
+        assert val('[1, 2, 3, 4, 5][1:4:2]') == [2, 4]
+
+    def test_list_negative_start(self):
+        assert val('[1, 2, 3, 4, 5][-2:]') == [4, 5]
+
+    def test_string_basic(self):
+        assert val('"hello"[1:4]') == 'ell'
+
+    def test_string_from_start(self):
+        assert val('"hello"[:3]') == 'hel'
+
+    def test_string_step(self):
+        assert val('"hello"[::2]') == 'hlo'
+
+    def test_full_copy(self):
+        assert val('[1, 2, 3][:]') == [1, 2, 3]
+
+    def test_step_zero_raises(self):
+        with pytest.raises(ZeroDivisionFault):
+            val('[1, 2, 3][::0]')
+
+    def test_invalid_type_raises(self):
+        with pytest.raises(InvalidUsageFault):
+            val('{"a": 1}[1:2]')
+
+    def test_non_int_index_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('[1, 2, 3]["a":2]')
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

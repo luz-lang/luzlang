@@ -710,6 +710,24 @@ class Interpreter:
         else:
             raise InvalidUsageFault(f"Type '{self._luz_type_name(base)}' does not support indexing")
 
+    def visit_SliceNode(self, node):
+        base = self.visit(node.base_node)
+        start = self.visit(node.start_node) if node.start_node is not None else None
+        end = self.visit(node.end_node)     if node.end_node is not None else None
+        step = self.visit(node.step_node)   if node.step_node is not None else None
+
+        if not isinstance(base, (list, str)):
+            raise InvalidUsageFault(f"Slicing is not supported for type '{self._luz_type_name(base)}'")
+        
+        for name, val in [("start", start), ("end", end), ("step", step)]:
+            if val is not None and not isinstance(val, int):
+                raise TypeViolationFault(f"Slice {name} must be an integer, not {self._luz_type_name(val)}")
+
+        if step == 0:
+            raise ZeroDivisionFault("Slice step cannot be zero")
+        
+        return base[start:end:step]
+
     # visit_IndexAssignNode() handles `base[index] = value`.
     # Because lists and dicts in Luz are passed by reference (they are plain
     # Python objects), mutating `base` here automatically updates the variable

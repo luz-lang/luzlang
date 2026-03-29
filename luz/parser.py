@@ -139,6 +139,13 @@ class IndexAccessNode:
         self.index_node = index_node
     def __repr__(self): return f"{self.base_node}[{self.index_node}]"
 
+class SliceNode:
+    def __init__(self, base_node, start_node, end_node=None, step_node=None):
+        self.base_node = base_node
+        self.start_node = start_node
+        self.end_node = end_node
+        self.step_node = step_node
+
 # Represents writing to a subscript position: expr[index] = value
 # This is a statement-level construct; the interpreter mutates the container
 # in-place rather than returning a new value.
@@ -1248,16 +1255,31 @@ class Parser:
                 node = ExprCallNode(node, args, kwargs)
                 node.line = call_line; node.col = call_col
             elif self.current_token.type == TokenType.LBRACKET:
-                bracket_line = self.current_token.line
-                bracket_col = self.current_token.col
                 self.advance()  # Consume '['
-                index = self.expr()
-                if self.current_token.type != TokenType.RBRACKET:
-                    raise UnexpectedTokenFault("Expected ']'")
-                self.advance()  # Consume ']'
-                index_node = IndexAccessNode(node, index)
-                index_node.line = bracket_line; index_node.col = bracket_col
-                node = index_node
+                start_node = None
+                end_node = None
+                step_node = None
+
+                if self.current_token.type != TokenType.COLON:
+                    start_node = self.expr()
+                
+                if self.current_token.type == TokenType.COLON:
+                    self.advance()
+                    if self.current_token.type not in (TokenType.RBRACKET, TokenType.COLON):
+                        end_node = self.expr()
+                    if self.current_token.type == TokenType.COLON:
+                        self.advance()
+                        if self.current_token.type != TokenType.RBRACKET:
+                            step_node = self.expr()
+                    if self.current_token.type != TokenType.RBRACKET:
+                        raise UnexpectedTokenFault("Expected ']'")
+                    self.advance()
+                    node = SliceNode(node, start_node, end_node, step_node)
+                else:
+                    if self.current_token.type != TokenType.RBRACKET:
+                        raise UnexpectedTokenFault("Expected ']'")
+                    self.advance()
+                    node = IndexAccessNode(node, start_node)
             else:
                 # DOT — attribute read or method call
                 dot_line = self.current_token.line
