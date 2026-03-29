@@ -97,6 +97,7 @@ nav:
       - luz-io: stdlib/io.md
       - luz-system: stdlib/system.md
       - luz-clock: stdlib/clock.md
+      - luz-types: stdlib/types.md
   - Ray Package Manager: ray.md
   - Architecture: architecture.md
   - Versioning: versioning.md
