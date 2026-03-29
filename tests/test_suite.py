@@ -643,6 +643,35 @@ greet(Cat("Kitty"))
         with pytest.raises(TypeViolationFault):
             val(code)
 
+    def test_subclass_satisfies_parent_type(self):
+        code = """
+class Animal {}
+class Dog extends Animal {}
+function greet(a: Animal) { return "hello" }
+greet(Dog())
+"""
+        assert val(code) == "hello"
+
+    def test_deep_inheritance_satisfies_ancestor_type(self):
+        code = """
+class A {}
+class B extends A {}
+class C extends B {}
+function f(x: A) { return "ok" }
+f(C())
+"""
+        assert val(code) == "ok"
+
+    def test_unrelated_class_still_raises(self):
+        code = """
+class Animal {}
+class Rock {}
+function greet(a: Animal) { return "hello" }
+greet(Rock())
+"""
+        with pytest.raises(TypeViolationFault):
+            val(code)
+
 
 # ── Typed variable declarations ──────────────────────────────────────────────
 
