@@ -1703,6 +1703,8 @@ class Interpreter:
             list_methods = {
                 'pop':      lambda: self.builtin_pop(obj, args[0] if args else None),
                 'len':      lambda: self.builtin_len(obj),
+                'sort':     lambda: obj.sort() or None,
+                'reverse':  lambda: obj.reverse() or None,
             }
             if method_name in list_methods:
                 return list_methods[method_name]()
@@ -1827,6 +1829,8 @@ class Interpreter:
         self._require_num(x, 'clamp')
         self._require_num(low, 'clamp')
         self._require_num(high, 'clamp')
+        if low > high:
+            raise ArgumentFault(f"clamp() requires low <= high, got {low} > {high}")
         return max(low, min(x, high))
 
     def builtin_sin(self, x):
