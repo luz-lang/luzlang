@@ -565,6 +565,15 @@ class TestBuiltinIndexInsert:
         with pytest.raises(Exception):
             val('xs = [1]\ninsert(xs, "a", 99)')
 
+    def test_insert_out_of_bounds_raises(self):
+        """Verify that positive out-of-range indices raise IndexFault."""
+        with pytest.raises(IndexFault):
+            val('xs = [1, 2]\ninsert(xs, 99, 9)')
+
+    def test_insert_negative_out_of_bounds_raises(self):
+        """Verify that negative out-of-range indices raise IndexFault."""
+        with pytest.raises(IndexFault):
+            val('xs = [1, 2]\ninsert(xs, -5, 9)')
 
 # ── reverse, any, all builtins ────────────────────────────────────────────────
 
