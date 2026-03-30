@@ -145,6 +145,10 @@ class FlowControlFault(SemanticFault): pass
 class ReturnFault(SemanticFault): pass
 class LoopFault(SemanticFault): pass
 
+# Raised by the type checker pass (compile-time type analysis).
+# Distinct from TypeViolationFault (runtime) so callers can tell them apart.
+class TypeCheckFault(SemanticFault): pass
+
 
 # ── 3. Runtime Faults ─────────────────────────────────────────────────────────
 # Raised during execution for conditions that only become apparent at runtime.

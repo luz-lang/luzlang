@@ -2,15 +2,22 @@ import sys
 from luz.lexer import Lexer
 from luz.parser import Parser
 from luz.interpreter import Interpreter
+from luz.typechecker import TypeChecker
 
 def run(text, interpreter):
     try:
         lexer = Lexer(text)
         tokens = lexer.get_tokens()
-        
+
         parser = Parser(tokens)
         ast = parser.parse()
-        
+
+        errors = TypeChecker().check(ast)
+        if errors:
+            for e in errors:
+                print(e)
+            return None
+
         result = interpreter.visit(ast)
         return result
     except Exception as e:
