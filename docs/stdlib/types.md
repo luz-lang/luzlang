@@ -3,7 +3,7 @@
 Type predicates, safe casting, and schema validation.
 
 ```
-from "luz-types" import types
+from "types" import types
 ```
 
 ---

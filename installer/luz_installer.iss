@@ -5,9 +5,9 @@ AppName=Luz
 #endif
 AppVersion={#AppVersion}
 AppPublisher=Elabsurdo984
-AppPublisherURL=https://elabsurdo984.github.io/luz-lang/
-AppSupportURL=https://github.com/Elabsurdo984/luz-lang/issues
-AppUpdatesURL=https://github.com/Elabsurdo984/luz-lang/releases
+AppPublisherURL=https://elabsurdo984.github.io/luzlang/
+AppSupportURL=https://github.com/Elabsurdo984/luzlang/issues
+AppUpdatesURL=https://github.com/Elabsurdo984/luzlang/releases
 DefaultDirName={autopf}\Luz
 DefaultGroupName=Luz
 AllowNoIcons=yes
@@ -26,7 +26,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Files]
 Source: "..\dist\luz.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\ray.exe"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\libs\*"; DestDir: "{app}\lib"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\libs\*"; DestDir: "{app}\luz_modules"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\Luz REPL"; Filename: "{app}\luz.exe"

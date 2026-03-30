@@ -62,7 +62,7 @@ def main():
             print(f"Error reading file: {e}")
     
     else:
-        print("Luz Interpreter v1.8.0 - Type 'exit' to terminate")
+        print(f"Luz Interpreter v1.17.0 - Type 'exit' to terminate")
         while True:
             try:
                 text = input("Luz > ")
