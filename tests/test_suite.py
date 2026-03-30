@@ -14,7 +14,7 @@ from luz.interpreter import Interpreter
 from luz.exceptions import (
     ArityFault, TypeViolationFault, ZeroDivisionFault, IndexFault,
     UndefinedSymbolFault, InvalidUsageFault, ImportFault, UserFault,
-    InheritanceFault, TypeClashFault
+    InheritanceFault, TypeClashFault, ArgumentFault
 )
 
 
@@ -846,6 +846,57 @@ class TestSlices:
     def test_non_int_index_raises(self):
         with pytest.raises(TypeViolationFault):
             val('[1, 2, 3]["a":2]')
+
+
+# ── clamp() low > high guard ──────────────────────────────────────────────────
+
+class TestClampValidation:
+    def test_clamp_normal(self):
+        assert val("clamp(5, 1, 10)") == 5
+
+    def test_clamp_below(self):
+        assert val("clamp(-3, 0, 10)") == 0
+
+    def test_clamp_above(self):
+        assert val("clamp(15, 0, 10)") == 10
+
+    def test_clamp_low_gt_high_raises(self):
+        with pytest.raises(ArgumentFault):
+            val("clamp(5, 10, 1)")
+
+    def test_clamp_low_gt_high_negative(self):
+        with pytest.raises(ArgumentFault):
+            val("clamp(0, 3, -1)")
+
+
+# ── list.sort() and list.reverse() dot methods ───────────────────────────────
+
+class TestListDotSortReverse:
+    def test_sort_basic(self):
+        assert val('[3, 1, 2].sort()') is None
+
+    def test_sort_mutates(self):
+        interp = run('xs = [3, 1, 2]\nxs.sort()')
+        assert interp.global_env.lookup("xs") == [1, 2, 3]
+
+    def test_sort_strings(self):
+        interp = run('xs = ["banana", "apple", "cherry"]\nxs.sort()')
+        assert interp.global_env.lookup("xs") == ["apple", "banana", "cherry"]
+
+    def test_sort_empty(self):
+        interp = run('xs = []\nxs.sort()')
+        assert interp.global_env.lookup("xs") == []
+
+    def test_reverse_dot_method(self):
+        assert val('[1, 2, 3].reverse()') is None
+
+    def test_reverse_mutates(self):
+        interp = run('xs = [1, 2, 3]\nxs.reverse()')
+        assert interp.global_env.lookup("xs") == [3, 2, 1]
+
+    def test_reverse_empty(self):
+        interp = run('xs = []\nxs.reverse()')
+        assert interp.global_env.lookup("xs") == []
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────
