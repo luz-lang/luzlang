@@ -59,7 +59,25 @@ class T:
     DICT     = "dict"
     FUNCTION = "function"
 
-    NUMERIC = {INT, FLOAT, NUMBER}
+    # Fixed-size integer types
+    INT8   = "int8"
+    INT16  = "int16"
+    INT32  = "int32"
+    INT64  = "int64"
+    UINT8  = "uint8"
+    UINT16 = "uint16"
+    UINT32 = "uint32"
+    UINT64 = "uint64"
+
+    # Fixed-size float types
+    FLOAT32 = "float32"
+    FLOAT64 = "float64"
+
+    # Sets for group membership checks
+    FIXED_INTS  = {"int8", "int16", "int32", "int64",
+                   "uint8", "uint16", "uint32", "uint64"}
+    FIXED_FLOATS = {"float32", "float64"}
+    NUMERIC = {INT, FLOAT, NUMBER} | FIXED_INTS | FIXED_FLOATS
 
     @staticmethod
     def compatible(declared: str, actual: str) -> bool:
@@ -69,6 +87,23 @@ class T:
         if declared == actual:
             return True
         if declared == T.NUMBER and actual in (T.INT, T.FLOAT):
+            return True
+        # Any fixed-size int satisfies 'int' or 'number'
+        if actual in T.FIXED_INTS and declared in (T.INT, T.NUMBER):
+            return True
+        # Any fixed-size float satisfies 'float' or 'number'
+        if actual in T.FIXED_FLOATS and declared in (T.FLOAT, T.NUMBER):
+            return True
+        # Fixed-size int satisfies a wider fixed-size int (widening only)
+        # e.g. int8 value is compatible with int16/int32/int64 annotation
+        _INT_WIDTH = {"int8": 8, "int16": 16, "int32": 32, "int64": 64}
+        _UINT_WIDTH = {"uint8": 8, "uint16": 16, "uint32": 32, "uint64": 64}
+        if actual in _INT_WIDTH and declared in _INT_WIDTH:
+            return _INT_WIDTH[actual] <= _INT_WIDTH[declared]
+        if actual in _UINT_WIDTH and declared in _UINT_WIDTH:
+            return _UINT_WIDTH[actual] <= _UINT_WIDTH[declared]
+        # float32 satisfies float64
+        if actual == T.FLOAT32 and declared == T.FLOAT64:
             return True
         return False
 

@@ -44,6 +44,7 @@ from .parser import Parser
 import os
 import sys
 import difflib
+import struct as _struct_module
 
 
 # ── Environment (variable store) ─────────────────────────────────────────────
@@ -128,9 +129,7 @@ class Environment:
             if name in self.types:
                 from .interpreter import Interpreter
                 type_name = self.types[name]
-                if not Interpreter._check_type(value, type_name):
-                    raise TypeViolationFault(f"Variable '{name}' expects type '{type_name}', "
-                                             f"got '{Interpreter._luz_type_name(value)}'")
+                value = Interpreter._enforce_type(value, type_name, f"Variable '{name}'")
             self.records[name] = value
             return value
         # Walk up only if we haven't hit a function boundary AND the name
@@ -207,9 +206,8 @@ class LuzFunction:
             else:
                 value = interpreter.visit(self.node.defaults[i])
             type_ann = self.node.arg_types[i]
-            if type_ann is not None and not Interpreter._check_type(value, type_ann):
-                raise TypeViolationFault(f"Argument '{name}' expects type '{type_ann}', "
-                                         f"got '{Interpreter._luz_type_name(value)}'")
+            if type_ann is not None:
+                value = Interpreter._enforce_type(value, type_ann, f"Argument '{name}'")
             env.define(name, value)
         if variadic:
             env.define(self.node.arg_tokens[fixed].value, list(arguments[fixed:]))
@@ -224,9 +222,11 @@ class LuzFunction:
             interpreter.execute_block(self.node.block, env)
         except ReturnException as e:
             ret = e.value
-            if self.node.return_type is not None and not Interpreter._check_type(ret, self.node.return_type):
-                raise TypeViolationFault(f"Function '{self.node.name_token.value}' must return '{self.node.return_type}', "
-                                         f"got '{Interpreter._luz_type_name(ret)}'")
+            if self.node.return_type is not None:
+                ret = Interpreter._enforce_type(
+                    ret, self.node.return_type,
+                    f"Return value of '{self.node.name_token.value}'"
+                )
             return ret
         if self.node.return_type is not None and self.node.return_type != 'null':
             raise TypeViolationFault(f"Function '{self.node.name_token.value}' must return '{self.node.return_type}', got 'null'")
@@ -1050,18 +1050,15 @@ class Interpreter:
     def visit_TypedVarAssignNode(self, node):
         var_name = node.var_token.value
         value = self.visit(node.value_node)
-        if not self._check_type(value, node.type_name):
-            raise TypeViolationFault(f"Variable '{var_name}' expects type '{node.type_name}', "
-                                     f"got '{self._luz_type_name(value)}'")
+        value = self._enforce_type(value, node.type_name, f"Variable '{var_name}'")
         self.current_env.define_typed(var_name, value, node.type_name)
         return value
 
     def visit_ConstDefNode(self, node):
         var_name = node.var_token.value
         value = self.visit(node.value_node)
-        if node.type_name and not self._check_type(value, node.type_name):
-            raise TypeViolationFault(f"Constant '{var_name}' expects type '{node.type_name}', "
-                                     f"got '{self._luz_type_name(value)}'")
+        if node.type_name:
+            value = self._enforce_type(value, node.type_name, f"Constant '{var_name}'")
         self.current_env.define_const(var_name, value, node.type_name)
         return value
 
@@ -1430,6 +1427,18 @@ class Interpreter:
             return val
         return Interpreter.luz_repr(val)
     
+    # Ranges for fixed-width integer types (inclusive on both ends).
+    _FIXED_INT_RANGES = {
+        'int8':   (-128,                    127),
+        'int16':  (-32768,                  32767),
+        'int32':  (-2147483648,             2147483647),
+        'int64':  (-9223372036854775808,    9223372036854775807),
+        'uint8':  (0,                       255),
+        'uint16': (0,                       65535),
+        'uint32': (0,                       4294967295),
+        'uint64': (0,                       18446744073709551615),
+    }
+
     @staticmethod
     def _check_type(value, type_name):
         if type_name == 'int':
@@ -1448,6 +1457,12 @@ class Interpreter:
             return isinstance(value, dict)
         if type_name == 'null':
             return value is None
+        # Fixed-size integer types — all backed by Python int at runtime
+        if type_name in Interpreter._FIXED_INT_RANGES:
+            return isinstance(value, int) and not isinstance(value, bool)
+        # Fixed-size float types — backed by Python float at runtime
+        if type_name in ('float32', 'float64'):
+            return isinstance(value, float)
         # Class name - walk the hierarchy to support inheritance
         if isinstance(value, LuzInstance):
             cls = value.luz_class
@@ -1459,6 +1474,43 @@ class Interpreter:
         if isinstance(value, LuzStructInstance):
             return value.struct_def.name == type_name
         return False
+
+    @staticmethod
+    def _enforce_type(value, type_name, label):
+        """Validate *value* against *type_name*, coerce when needed, and return it.
+
+        For fixed-size integer types, raises OverflowFault when the value is
+        outside the valid range.  For float32, truncates precision to 32 bits.
+        For all other types, behaves identically to _check_type but raises
+        TypeViolationFault directly instead of returning False.
+
+        Args:
+            value:     The Luz runtime value to validate.
+            type_name: The declared type annotation string (e.g. 'int32').
+            label:     Human-readable name used in error messages
+                       (e.g. "Variable 'x'" or "Argument 'n'").
+        Returns:
+            The value, possibly coerced (float32 loses precision).
+        Raises:
+            TypeViolationFault — base type mismatch.
+            OverflowFault      — fixed-size integer out of range.
+        """
+        if not Interpreter._check_type(value, type_name):
+            raise TypeViolationFault(
+                f"{label} expects type '{type_name}', "
+                f"got '{Interpreter._luz_type_name(value)}'"
+            )
+        if type_name in Interpreter._FIXED_INT_RANGES:
+            lo, hi = Interpreter._FIXED_INT_RANGES[type_name]
+            if not (lo <= value <= hi):
+                raise OverflowFault(
+                    f"{label}: value {value} is out of range for '{type_name}' "
+                    f"(valid range: {lo} to {hi})"
+                )
+        elif type_name == 'float32':
+            # Truncate to 32-bit IEEE 754 precision so arithmetic matches C float behaviour.
+            value = _struct_module.unpack('f', _struct_module.pack('f', value))[0]
+        return value
     
     @staticmethod
     def _luz_type_name(value):
@@ -1730,11 +1782,7 @@ class Interpreter:
             )
         for i, val in enumerate(arguments):
             field_name, type_name, _ = struct.fields[i]
-            if not self._check_type(val, type_name):
-                raise TypeViolationFault(
-                    f"Field '{field_name}' of '{struct.name}' expects '{type_name}', "
-                    f"got '{self._luz_type_name(val)}'"
-                )
+            val = self._enforce_type(val, type_name, f"Field '{field_name}' of '{struct.name}'")
             attrs[field_name] = val
 
         # Keyword arguments
@@ -1750,11 +1798,7 @@ class Interpreter:
                 )
             field_def = next(f for f in struct.fields if f[0] == key)
             _, type_name, _ = field_def
-            if not self._check_type(val, type_name):
-                raise TypeViolationFault(
-                    f"Field '{key}' of '{struct.name}' expects '{type_name}', "
-                    f"got '{self._luz_type_name(val)}'"
-                )
+            val = self._enforce_type(val, type_name, f"Field '{key}' of '{struct.name}'")
             attrs[key] = val
 
         # Fill missing fields with defaults

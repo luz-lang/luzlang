@@ -14,7 +14,7 @@ from luz.interpreter import Interpreter
 from luz.exceptions import (
     ArityFault, TypeViolationFault, ZeroDivisionFault, IndexFault,
     UndefinedSymbolFault, InvalidUsageFault, ImportFault, UserFault,
-    InheritanceFault, TypeClashFault, ArgumentFault
+    InheritanceFault, TypeClashFault, ArgumentFault, OverflowFault
 )
 
 
@@ -770,6 +770,114 @@ class TestTypedVariables:
 
     def test_typed_var_in_function(self):
         assert val("function f() { x: int = 10\nx = 20\nreturn x }\nf()") == 20
+
+
+# ── Fixed-size integer and float types ───────────────────────────────────────
+
+class TestFixedSizeTypes:
+    # ── int8 ──
+    def test_int8_valid(self):
+        assert env("x: int8 = 127", "x") == 127
+
+    def test_int8_negative(self):
+        assert env("x: int8 = -128", "x") == -128
+
+    def test_int8_overflow_raises(self):
+        with pytest.raises(OverflowFault):
+            val("x: int8 = 128")
+
+    def test_int8_underflow_raises(self):
+        with pytest.raises(OverflowFault):
+            val("x: int8 = -129")
+
+    # ── uint8 ──
+    def test_uint8_valid(self):
+        assert env("x: uint8 = 255", "x") == 255
+
+    def test_uint8_zero(self):
+        assert env("x: uint8 = 0", "x") == 0
+
+    def test_uint8_overflow_raises(self):
+        with pytest.raises(OverflowFault):
+            val("x: uint8 = 256")
+
+    def test_uint8_negative_raises(self):
+        with pytest.raises(OverflowFault):
+            val("x: uint8 = -1")
+
+    # ── int16 / int32 / int64 ──
+    def test_int16_bounds(self):
+        assert env("x: int16 = 32767", "x") == 32767
+        assert env("x: int16 = -32768", "x") == -32768
+
+    def test_int32_bounds(self):
+        assert env("x: int32 = 2147483647", "x") == 2147483647
+
+    def test_int64_large(self):
+        assert env("x: int64 = 9223372036854775807", "x") == 9223372036854775807
+
+    # ── uint16 / uint32 / uint64 ──
+    def test_uint16_max(self):
+        assert env("x: uint16 = 65535", "x") == 65535
+
+    def test_uint32_max(self):
+        assert env("x: uint32 = 4294967295", "x") == 4294967295
+
+    # ── wrong base type ──
+    def test_int32_rejects_float(self):
+        with pytest.raises(TypeViolationFault):
+            val("x: int32 = 3.14")
+
+    def test_int32_rejects_bool(self):
+        with pytest.raises(TypeViolationFault):
+            val("x: int32 = true")
+
+    def test_int32_rejects_string(self):
+        with pytest.raises(TypeViolationFault):
+            val('x: int32 = "hello"')
+
+    # ── float32 ──
+    def test_float32_valid(self):
+        import struct
+        expected = struct.unpack('f', struct.pack('f', 3.14))[0]
+        assert env("x: float32 = 3.14", "x") == expected
+
+    def test_float32_rejects_int(self):
+        with pytest.raises(TypeViolationFault):
+            val("x: float32 = 5")
+
+    # ── float64 ──
+    def test_float64_valid(self):
+        assert env("x: float64 = 3.14", "x") == 3.14
+
+    def test_float64_rejects_int(self):
+        with pytest.raises(TypeViolationFault):
+            val("x: float64 = 5")
+
+    # ── reassignment overflow ──
+    def test_int8_reassign_overflow_raises(self):
+        with pytest.raises(OverflowFault):
+            val("x: int8 = 10\nx = 200")
+
+    # ── fixed-size type as function parameter ──
+    def test_int32_param(self):
+        code = "function f(n: int32) { return n }\nf(42)"
+        assert val(code) == 42
+
+    def test_int32_param_overflow_raises(self):
+        code = "function f(n: int32) { return n }\nf(3000000000)"
+        with pytest.raises(OverflowFault):
+            val(code)
+
+    # ── fixed-size type as return type ──
+    def test_int16_return(self):
+        code = "function f() -> int16 { return 1000 }\nf()"
+        assert val(code) == 1000
+
+    def test_int16_return_overflow_raises(self):
+        code = "function f() -> int16 { return 40000 }\nf()"
+        with pytest.raises(OverflowFault):
+            val(code)
 
 
 class TestDictDotMethods:
