@@ -75,6 +75,7 @@ class Lexer:
         'match': TokenType.MATCH,
         'step': TokenType.STEP,
         'const': TokenType.CONST,
+        'struct': TokenType.STRUCT,
     }
 
     # ESCAPE_SEQUENCES maps the character after a backslash to the actual

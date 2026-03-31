@@ -157,11 +157,12 @@ _C_TO_PYTHON = [
     TokenType.MATCH,         # 69  TT_MATCH
     TokenType.STEP,          # 70  TT_STEP
     TokenType.CONST,         # 71  TT_CONST
-    TokenType.EOF,           # 72  TT_EOF
-    # 73  TT_ERROR — no Python counterpart; raises InvalidTokenFault below
+    TokenType.STRUCT,        # 72  TT_STRUCT
+    TokenType.EOF,           # 73  TT_EOF
+    # 74  TT_ERROR — no Python counterpart; raises InvalidTokenFault below
 ]
 
-_TT_ERROR_IDX = len(_C_TO_PYTHON)   # == 73
+_TT_ERROR_IDX = len(_C_TO_PYTHON)   # == 74
 
 
 # ── Public interface ──────────────────────────────────────────────────────────

@@ -341,6 +341,48 @@ class LuzInstance:
         return f"<{self.luz_class.name} instance>"
 
 
+# LuzStruct holds the struct definition: field names, types, and optional defaults.
+# It is stored in the environment under the struct name, just like a class.
+class LuzStruct:
+    def __init__(self, name, fields):
+        # fields: list of (name: str, type_name: str, default_value or None)
+        self.name = name
+        self.fields = fields
+
+    def __repr__(self):
+        return f"<struct {self.name}>"
+
+
+# LuzStructInstance is a concrete struct value.  It stores field values in a
+# plain dict.  Unlike LuzInstance, structs have no methods — only data fields.
+# In the interpreter they use reference semantics (like classes); the compiler
+# will stack-allocate them for true value semantics.
+class LuzStructInstance:
+    def __init__(self, struct_def, attrs):
+        self.struct_def = struct_def   # LuzStruct
+        self.attrs = attrs             # dict: field_name -> value
+
+    def get(self, name):
+        if name in self.attrs:
+            return self.attrs[name]
+        raise AttributeNotFoundFault(
+            f"Struct '{self.struct_def.name}' has no field '{name}'"
+        )
+
+    def set(self, name, value):
+        if name not in self.attrs:
+            raise AttributeNotFoundFault(
+                f"Struct '{self.struct_def.name}' has no field '{name}'"
+            )
+        self.attrs[name] = value
+
+    def __repr__(self):
+        pairs = ', '.join(
+            f'{k}: {Interpreter.luz_repr(v)}' for k, v in self.attrs.items()
+        )
+        return f"{self.struct_def.name} {{ {pairs} }}"
+
+
 # LuzModule is the runtime object created by `import "x" as alias`.
 # It wraps a snapshot of all names defined in the module's global environment,
 # exposing them as attributes accessible via dot notation (alias.name).
@@ -1284,6 +1326,9 @@ class Interpreter:
         try:
             function = self.current_env.lookup(func_name)
 
+            if isinstance(function, LuzStruct):
+                return self._construct_struct(function, arguments, kwargs)
+
             if isinstance(function, LuzClass):
                 instance = LuzInstance(function)
                 init_method = function.find_method('init')
@@ -1318,6 +1363,9 @@ class Interpreter:
         kwargs = {name: self.visit(expr) for name, expr in node.kwargs.items()}
 
         try:
+            if isinstance(callee, LuzStruct):
+                return self._construct_struct(callee, arguments, kwargs)
+
             if isinstance(callee, LuzClass):
                 instance = LuzInstance(callee)
                 init_method = callee.find_method('init')
@@ -1367,6 +1415,11 @@ class Interpreter:
                 for k, v in val.items()
             )
             return "{" + pairs + "}"
+        if isinstance(val, LuzStructInstance):
+            pairs = ', '.join(
+                f'{k}: {Interpreter.luz_repr(v)}' for k, v in val.attrs.items()
+            )
+            return f"{val.struct_def.name} {{ {pairs} }}"
         return str(val)
 
     # luz_display() formats a top-level value for write() — strings print
@@ -1402,6 +1455,9 @@ class Interpreter:
                 if cls.name == type_name:
                     return True
                 cls = cls.parent
+        # Struct type check by struct name
+        if isinstance(value, LuzStructInstance):
+            return value.struct_def.name == type_name
         return False
     
     @staticmethod
@@ -1414,6 +1470,8 @@ class Interpreter:
         if isinstance(value, dict): return 'dict'
         if isinstance(value, list): return 'list'
         if isinstance(value, LuzInstance): return value.luz_class.name
+        if isinstance(value, LuzStructInstance): return value.struct_def.name
+        if isinstance(value, LuzStruct): return 'struct'
         return type(value).__name__
     
 
@@ -1649,17 +1707,79 @@ class Interpreter:
         self.current_env.assign(node.name_token.value, luz_class)
         return luz_class
 
-    # visit_AttributeAccessNode() reads obj.attr from a LuzInstance.
+    # visit_StructDefNode() registers a struct definition in the current environment.
+    def visit_StructDefNode(self, node):
+        fields = []
+        for field_tok, type_name, default_node in node.fields:
+            default_val = self.visit(default_node) if default_node else None
+            fields.append((field_tok.value, type_name, default_val))
+        struct = LuzStruct(node.name_token.value, fields)
+        self.current_env.assign(node.name_token.value, struct)
+        return struct
+
+    # _construct_struct() creates a LuzStructInstance from positional and/or
+    # keyword arguments, validating types and applying defaults.
+    def _construct_struct(self, struct, arguments, kwargs):
+        attrs = {}
+
+        # Positional arguments — assigned to fields in declaration order
+        if len(arguments) > len(struct.fields):
+            raise ArityFault(
+                f"Struct '{struct.name}' has {len(struct.fields)} field(s), "
+                f"got {len(arguments)} positional argument(s)"
+            )
+        for i, val in enumerate(arguments):
+            field_name, type_name, _ = struct.fields[i]
+            if not self._check_type(val, type_name):
+                raise TypeViolationFault(
+                    f"Field '{field_name}' of '{struct.name}' expects '{type_name}', "
+                    f"got '{self._luz_type_name(val)}'"
+                )
+            attrs[field_name] = val
+
+        # Keyword arguments
+        valid_names = {f[0] for f in struct.fields}
+        for key, val in kwargs.items():
+            if key not in valid_names:
+                raise AttributeNotFoundFault(
+                    f"Struct '{struct.name}' has no field '{key}'"
+                )
+            if key in attrs:
+                raise ArgumentFault(
+                    f"Field '{key}' of '{struct.name}' provided twice"
+                )
+            field_def = next(f for f in struct.fields if f[0] == key)
+            _, type_name, _ = field_def
+            if not self._check_type(val, type_name):
+                raise TypeViolationFault(
+                    f"Field '{key}' of '{struct.name}' expects '{type_name}', "
+                    f"got '{self._luz_type_name(val)}'"
+                )
+            attrs[key] = val
+
+        # Fill missing fields with defaults
+        for field_name, type_name, default_val in struct.fields:
+            if field_name not in attrs:
+                if default_val is None:
+                    raise ArityFault(
+                        f"Struct '{struct.name}': field '{field_name}' "
+                        f"has no default — must be provided"
+                    )
+                attrs[field_name] = default_val
+
+        return LuzStructInstance(struct, attrs)
+
+    # visit_AttributeAccessNode() reads obj.attr from a LuzInstance or LuzStructInstance.
     def visit_AttributeAccessNode(self, node):
         obj = self.visit(node.obj_node)
-        if not isinstance(obj, (LuzInstance, LuzModule)):
+        if not isinstance(obj, (LuzInstance, LuzModule, LuzStructInstance)):
             raise InvalidUsageFault(f"Cannot access attribute on value '{obj}'")
         return obj.get(node.attr_token.value)
 
-    # visit_AttributeAssignNode() writes obj.attr = value on a LuzInstance.
+    # visit_AttributeAssignNode() writes obj.attr = value on a LuzInstance or LuzStructInstance.
     def visit_AttributeAssignNode(self, node):
         obj = self.visit(node.obj_node)
-        if not isinstance(obj, (LuzInstance, LuzModule)):
+        if not isinstance(obj, (LuzInstance, LuzModule, LuzStructInstance)):
             raise InvalidUsageFault(f"Cannot set attribute on value '{obj}'")
         value = self.visit(node.value_node)
         obj.set(node.attr_token.value, value)
@@ -1781,6 +1901,10 @@ class Interpreter:
             return "null"
         if isinstance(value, LuzInstance):
             return value.luz_class.name
+        if isinstance(value, LuzStructInstance):
+            return value.struct_def.name
+        if isinstance(value, LuzStruct):
+            return "struct"
         if isinstance(value, LuzClass):
             return "class"
         if isinstance(value, (LuzFunction, LuzLambda)):

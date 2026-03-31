@@ -138,6 +138,9 @@ class TokenType(Enum):
     # ── Constants ─────────────────────────────────────────────────────────────
     CONST = auto()     # const — declares an immutable binding
 
+    # ── Structs ───────────────────────────────────────────────────────────────
+    STRUCT = auto()    # struct — declares a value-type data container
+
     # ── Sentinel ─────────────────────────────────────────────────────────────
     EOF = auto()       # End-of-file marker; always the last token in the list
 

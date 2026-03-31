@@ -189,6 +189,14 @@ class ConstDefNode:
         self.type_name = type_name  # Optional type annotation (str or None)
         self.value_node = value_node
 
+# Represents a struct definition:
+#   struct Name { field: type [= default], ... }
+# fields is a list of (name_token, type_name: str, default_node or None)
+class StructDefNode:
+    def __init__(self, name_token, fields):
+        self.name_token = name_token
+        self.fields = fields   # [(name_token, type_name, default_node|None), ...]
+
 # Represents a binary operation: left op right  (e.g. a + b, x == y)
 class BinOpNode:
     def __init__(self, left_node, op_token, right_node):
@@ -524,6 +532,9 @@ class Parser:
 
         if self.current_token.type == TokenType.CONST:
             return self.const_def()
+
+        if self.current_token.type == TokenType.STRUCT:
+            return self.struct_def()
 
         COMPOUND = {
             TokenType.PLUS_ASSIGN:  TokenType.PLUS,
@@ -918,6 +929,52 @@ class Parser:
         self.advance()  # Consume '='
         value = self.expr()
         node = ConstDefNode(var_token, type_name, value)
+        node.line = line; node.col = col
+        return node
+
+    def struct_def(self):
+        line = self.current_token.line
+        col  = self.current_token.col
+        self.advance()  # consume 'struct'
+        if self.current_token.type != TokenType.IDENTIFIER:
+            raise UnexpectedTokenFault("Expected struct name after 'struct'")
+        name_token = self.current_token
+        self.advance()
+
+        if self.current_token.type != TokenType.LBRACE:
+            raise StructureFault("Expected '{' after struct name")
+        self.advance()  # consume '{'
+
+        fields = []
+        while self.current_token.type != TokenType.RBRACE:
+            if self.current_token.type == TokenType.EOF:
+                raise UnexpectedEOFault("Unterminated struct body")
+            if self.current_token.type != TokenType.IDENTIFIER:
+                raise UnexpectedTokenFault("Expected field name in struct body")
+            field_name_tok = self.current_token
+            self.advance()
+
+            if self.current_token.type != TokenType.COLON:
+                raise StructureFault(f"Expected ':' after field name '{field_name_tok.value}'")
+            self.advance()  # consume ':'
+
+            if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
+                raise UnexpectedTokenFault("Expected type name after ':'")
+            type_name = 'null' if self.current_token.type == TokenType.NULL else self.current_token.value
+            self.advance()
+
+            default_node = None
+            if self.current_token.type == TokenType.ASSIGN:
+                self.advance()  # consume '='
+                default_node = self.expr()
+
+            fields.append((field_name_tok, type_name, default_node))
+            # Optional comma separator between fields
+            if self.current_token.type == TokenType.COMMA:
+                self.advance()
+
+        self.advance()  # consume '}'
+        node = StructDefNode(name_token, fields)
         node.line = line; node.col = col
         return node
 

@@ -146,6 +146,9 @@ typedef enum {
     /* Constants */
     TT_CONST,
 
+    /* Structs */
+    TT_STRUCT,
+
     /* Sentinels */
     TT_EOF,
     TT_ERROR   /* illegal character - never reaches Python*/

@@ -28,7 +28,7 @@ from typing import Optional
 from luz.parser import (
     NumberNode, StringNode, FStringNode, BooleanNode, NullNode,
     ListNode, DictNode, TupleNode,
-    VarAssignNode, TypedVarAssignNode, ConstDefNode, VarAccessNode,
+    VarAssignNode, TypedVarAssignNode, ConstDefNode, StructDefNode, VarAccessNode,
     BinOpNode, UnaryOpNode,
     FuncDefNode, LambdaNode, AnonFuncNode, ReturnNode,
     CallNode, ExprCallNode, MethodCallNode,
@@ -596,6 +596,14 @@ class TypeChecker:
         return self.visit(node.right)
 
     # ── Classes ───────────────────────────────────────────────────────────────
+
+    def visit_StructDefNode(self, node) -> str:
+        # Register the struct name as a callable type and visit default expressions
+        self.env.define(node.name_token.value, T.UNKNOWN)
+        for _, _, default_node in node.fields:
+            if default_node:
+                self.visit(default_node)
+        return T.UNKNOWN
 
     def visit_ClassDefNode(self, node) -> str:
         self.env.define(node.name_token.value, T.UNKNOWN)
