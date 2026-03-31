@@ -1685,6 +1685,7 @@ class Interpreter:
             str_methods = {
                 'uppercase': lambda: obj.upper(),
                 'lowercase': lambda: obj.lower(),
+                'len': lambda: len(obj),
                 'trim': lambda: obj.strip(),
                 'split': lambda: obj.split(args[0]) if args else obj.split(),
             }
