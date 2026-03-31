@@ -147,3 +147,4 @@ A Luz library absolutely needs to have a luz.json file, which includes library m
 
 ## IMPORTANT:
 - Any bugs encountered, whether in the code or the language, while adding something else, should be created as an issue using the GitHub CLI so they can be resolved later.
+- When I ask you to upload all the modified content to GitHub, you shouldn't include information about Claude, and the messages shouldn't be lengthy if they aren't necessary.

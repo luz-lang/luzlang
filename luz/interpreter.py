@@ -59,7 +59,8 @@ import difflib
 class Environment:
     def __init__(self, parent=None, is_function_scope=False):
         self.records = {}
-        self.types = {}             # Maps variable name → current value
+        self.types = {}             # Maps variable name → declared type
+        self.constants = set()      # Names that are immutable (declared with const)
         self.parent = parent          # Enclosing scope (None for global)
         self.is_function_scope = is_function_scope
 
@@ -69,11 +70,26 @@ class Environment:
     def define(self, name, value):
         self.records[name] = value
         return value
-    
+
     def define_typed(self, name, value, type_name):
         self.records[name] = value
         self.types[name] = type_name
         return value
+
+    def define_const(self, name, value, type_name=None):
+        self.records[name] = value
+        self.constants.add(name)
+        if type_name:
+            self.types[name] = type_name
+        return value
+
+    def _is_const(self, name):
+        """Return True if name is a constant in this scope or any enclosing scope."""
+        if name in self.constants:
+            return True
+        if self.parent:
+            return self.parent._is_const(name)
+        return False
 
     # lookup() searches the scope chain upward until it finds the name or
     # reaches the top-level global scope with no parent.
@@ -107,6 +123,8 @@ class Environment:
     #      here so it stays local to the function.
     def assign(self, name, value):
         if name in self.records:
+            if name in self.constants:
+                raise InvalidUsageFault(f"Cannot reassign constant '{name}'")
             if name in self.types:
                 from .interpreter import Interpreter
                 type_name = self.types[name]
@@ -994,6 +1012,15 @@ class Interpreter:
             raise TypeViolationFault(f"Variable '{var_name}' expects type '{node.type_name}', "
                                      f"got '{self._luz_type_name(value)}'")
         self.current_env.define_typed(var_name, value, node.type_name)
+        return value
+
+    def visit_ConstDefNode(self, node):
+        var_name = node.var_token.value
+        value = self.visit(node.value_node)
+        if node.type_name and not self._check_type(value, node.type_name):
+            raise TypeViolationFault(f"Constant '{var_name}' expects type '{node.type_name}', "
+                                     f"got '{self._luz_type_name(value)}'")
+        self.current_env.define_const(var_name, value, node.type_name)
         return value
 
     # visit_VarAccessNode() retrieves the value of a variable by walking the

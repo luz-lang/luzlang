@@ -388,6 +388,7 @@ static const Keyword KEYWORDS[] = {
     { "switch",   TT_SWITCH   },
     { "case",     TT_CASE     },
     { "match",    TT_MATCH    },
+    { "const",    TT_CONST    },
     { NULL,       TT_EOF      }   /* sentinel */
 };
 
@@ -721,6 +722,7 @@ static const char* token_type_name(TokenType t) {
         case TT_SWITCH:       return "SWITCH";
         case TT_CASE:         return "CASE";
         case TT_MATCH:        return "MATCH";
+        case TT_CONST:        return "CONST";
         case TT_EOF:          return "EOF";
         case TT_ERROR:        return "ERROR";
         default:              return "UNKNOWN";

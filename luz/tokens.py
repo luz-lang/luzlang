@@ -135,6 +135,9 @@ class TokenType(Enum):
     # ── For step ──────────────────────────────────────────────────────────────
     STEP = auto()      # step <expr> — optional increment in for-range loops
 
+    # ── Constants ─────────────────────────────────────────────────────────────
+    CONST = auto()     # const — declares an immutable binding
+
     # ── Sentinel ─────────────────────────────────────────────────────────────
     EOF = auto()       # End-of-file marker; always the last token in the list
 

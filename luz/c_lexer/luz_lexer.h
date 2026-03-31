@@ -143,6 +143,9 @@ typedef enum {
     /* For step */
     TT_STEP,
 
+    /* Constants */
+    TT_CONST,
+
     /* Sentinels */
     TT_EOF,
     TT_ERROR   /* illegal character - never reaches Python*/

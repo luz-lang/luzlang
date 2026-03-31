@@ -182,6 +182,13 @@ class TypedVarAssignNode:
         self.type_name = type_name
         self.value_node = value_node
 
+# Represents a constant declaration: const NAME = expr  or  const NAME: type = expr
+class ConstDefNode:
+    def __init__(self, var_token, type_name, value_node):
+        self.var_token = var_token   # The IDENTIFIER token for the constant name
+        self.type_name = type_name  # Optional type annotation (str or None)
+        self.value_node = value_node
+
 # Represents a binary operation: left op right  (e.g. a + b, x == y)
 class BinOpNode:
     def __init__(self, left_node, op_token, right_node):
@@ -514,6 +521,9 @@ class Parser:
 
         if self.current_token.type == TokenType.MATCH:
             return self.match_expr()
+
+        if self.current_token.type == TokenType.CONST:
+            return self.const_def()
 
         COMPOUND = {
             TokenType.PLUS_ASSIGN:  TokenType.PLUS,
@@ -883,6 +893,32 @@ class Parser:
             raise UnexpectedTokenFault("Expected '}' to close match")
         self.advance()  # Consume '}'
         node = MatchNode(subject, arms); node.line = line; node.col = col
+        return node
+
+    def const_def(self):
+        line = self.current_token.line
+        col = self.current_token.col
+        self.advance()  # Consume 'const'
+        if self.current_token.type != TokenType.IDENTIFIER:
+            raise UnexpectedTokenFault("Expected constant name after 'const'")
+        var_token = self.current_token
+        self.advance()
+
+        # Optional type annotation: const NAME: type = expr
+        type_name = None
+        if self.current_token.type == TokenType.COLON:
+            self.advance()  # Consume ':'
+            if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
+                raise UnexpectedTokenFault("Expected type name after ':'")
+            type_name = 'null' if self.current_token.type == TokenType.NULL else self.current_token.value
+            self.advance()
+
+        if self.current_token.type != TokenType.ASSIGN:
+            raise StructureFault("Expected '=' in constant declaration")
+        self.advance()  # Consume '='
+        value = self.expr()
+        node = ConstDefNode(var_token, type_name, value)
+        node.line = line; node.col = col
         return node
 
     def class_def(self):

@@ -25,7 +25,7 @@ from typing import Optional
 from luz.parser import (
     NumberNode, StringNode, FStringNode, BooleanNode, NullNode,
     ListNode, DictNode, TupleNode,
-    VarAssignNode, TypedVarAssignNode, VarAccessNode,
+    VarAssignNode, TypedVarAssignNode, ConstDefNode, VarAccessNode,
     BinOpNode, UnaryOpNode,
     FuncDefNode, LambdaNode, AnonFuncNode, ReturnNode,
     CallNode, ExprCallNode, MethodCallNode,
@@ -108,10 +108,22 @@ class TypeCheckError:
 class TypeEnv:
     def __init__(self, parent: Optional[TypeEnv] = None):
         self._types: dict[str, str] = {}
+        self._constants: set = set()
         self.parent = parent
 
     def define(self, name: str, typ: str):
         self._types[name] = typ
+
+    def define_const(self, name: str, typ: str):
+        self._types[name] = typ
+        self._constants.add(name)
+
+    def is_const(self, name: str) -> bool:
+        if name in self._constants:
+            return True
+        if self.parent:
+            return self.parent.is_const(name)
+        return False
 
     def update(self, name: str, typ: str):
         if name in self._types:
@@ -216,9 +228,24 @@ class TypeChecker:
         return self.env.lookup(node.token.value)
 
     def visit_VarAssignNode(self, node) -> str:
+        name = node.var_name_token.value
+        if self.env.is_const(name):
+            self._err(f"Cannot reassign constant '{name}'", token=node.var_name_token)
         typ = self.visit(node.value_node)
-        self.env.update(node.var_name_token.value, typ)
+        self.env.update(name, typ)
         return typ
+
+    def visit_ConstDefNode(self, node) -> str:
+        actual = self.visit(node.value_node)
+        declared = node.type_name or actual
+        if node.type_name and not T.compatible(node.type_name, actual):
+            self._err(
+                f"Constant '{node.var_token.value}' declared as '{node.type_name}' "
+                f"but assigned a '{actual}' value",
+                token=node.var_token
+            )
+        self.env.define_const(node.var_token.value, declared)
+        return declared
 
     def visit_TypedVarAssignNode(self, node) -> str:
         declared = node.type_name
