@@ -11,15 +11,18 @@
 #   - Verify return statements match the declared return type.
 #   - Catch arithmetic operations between incompatible types (e.g. string + int).
 #
-# Non-goals for v1.8 (future):
-#   - Unused variable / import detection (v1.9)
+# Goals for v1.9:
+#   - Unused variable / import / parameter detection (Go-style: errors, not warnings).
+#     Names prefixed with '_' are exempt from unused checks.
+#
+# Non-goals (future):
 #   - Generic / parameterised types  e.g. list[int]
 #   - Full inference across branches (if/else, loops)
 #
 # The checker collects ALL errors rather than stopping at the first one.
 
 from __future__ import annotations
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dc_field
 from typing import Optional
 
 from luz.parser import (
@@ -95,27 +98,47 @@ class TypeCheckError:
     message: str
     line: Optional[int] = None
     col:  Optional[int] = None
+    fault_kind: str = "TypeCheckFault"
 
     def __str__(self):
         loc = f"line {self.line}" if self.line else "unknown location"
         if self.col:
             loc += f", col {self.col}"
-        return f"TypeCheckFault at {loc}: {self.message}"
+        return f"{self.fault_kind} at {loc}: {self.message}"
+
+
+# ── Per-binding metadata (for usage tracking) ────────────────────────────────
+
+@dataclass
+class _Binding:
+    typ: str
+    token: object = None         # source token; None means "don't track usage"
+    is_import: bool = False
+    is_param: bool = False
+    used: bool = False
 
 
 # ── Type environment ──────────────────────────────────────────────────────────
 
 class TypeEnv:
     def __init__(self, parent: Optional[TypeEnv] = None):
-        self._types: dict[str, str] = {}
+        self._bindings: dict[str, _Binding] = {}
         self._constants: set = set()
         self.parent = parent
 
-    def define(self, name: str, typ: str):
-        self._types[name] = typ
+    # ── Core type operations ──────────────────────────────────────────────────
 
-    def define_const(self, name: str, typ: str):
-        self._types[name] = typ
+    def define(self, name: str, typ: str, *,
+               token=None, is_import: bool = False, is_param: bool = False):
+        """Define a new binding in this scope.
+        Pass `token` to opt-in to unused-variable tracking.
+        Names starting with '_' are always exempt from unused checks."""
+        track_tok = token if (token is not None and not name.startswith('_')) else None
+        self._bindings[name] = _Binding(typ, track_tok, is_import, is_param)
+
+    def define_const(self, name: str, typ: str, *, token=None):
+        track_tok = token if (token is not None and not name.startswith('_')) else None
+        self._bindings[name] = _Binding(typ, track_tok)
         self._constants.add(name)
 
     def is_const(self, name: str) -> bool:
@@ -125,20 +148,42 @@ class TypeEnv:
             return self.parent.is_const(name)
         return False
 
+    def is_defined(self, name: str) -> bool:
+        """Return True if name is defined anywhere in this scope chain."""
+        if name in self._bindings:
+            return True
+        if self.parent:
+            return self.parent.is_defined(name)
+        return False
+
     def update(self, name: str, typ: str):
-        if name in self._types:
-            self._types[name] = typ
+        if name in self._bindings:
+            self._bindings[name].typ = typ
         elif self.parent:
             self.parent.update(name, typ)
         else:
-            self._types[name] = typ
+            self._bindings[name] = _Binding(typ)
 
     def lookup(self, name: str) -> str:
-        if name in self._types:
-            return self._types[name]
+        if name in self._bindings:
+            return self._bindings[name].typ
         if self.parent:
             return self.parent.lookup(name)
         return T.UNKNOWN
+
+    # ── Usage tracking ────────────────────────────────────────────────────────
+
+    def mark_used(self, name: str):
+        """Walk up scope chain and mark the binding as used where it is defined."""
+        if name in self._bindings:
+            self._bindings[name].used = True
+        elif self.parent:
+            self.parent.mark_used(name)
+
+    def own_unused(self) -> list:
+        """Return (name, _Binding) for tracked but unused bindings in THIS scope."""
+        return [(n, b) for n, b in self._bindings.items()
+                if b.token is not None and not b.used]
 
 
 # ── Function signature ────────────────────────────────────────────────────────
@@ -166,6 +211,7 @@ class TypeChecker:
         self.env = TypeEnv()
         self._functions: dict[str, FuncSignature] = {}
         self._current_return_type: str = T.UNKNOWN
+        self._in_function_depth: int = 0   # > 0 when inside a function/lambda body
         self._setup_builtins()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -173,6 +219,8 @@ class TypeChecker:
     def check(self, ast: list) -> list[TypeCheckError]:
         for node in ast:
             self.visit(node)
+        # Check unused imports at global scope (locals at global scope are exempt)
+        self._report_unused(self.env, check_locals=False, check_imports=True)
         return self.errors
 
     # ── Visitor dispatch ──────────────────────────────────────────────────────
@@ -192,6 +240,24 @@ class TypeChecker:
         if token is not None:
             line, col = self._tok_loc(token)
         self.errors.append(TypeCheckError(message, line, col))
+
+    def _report_unused(self, env: TypeEnv, *,
+                       check_locals: bool = True, check_imports: bool = True):
+        """Append errors for every tracked-but-unused binding in `env`."""
+        for name, b in env.own_unused():
+            line = getattr(b.token, 'line', None)
+            col  = getattr(b.token, 'col',  None)
+            if b.is_import and check_imports:
+                self.errors.append(TypeCheckError(
+                    f"Import '{name}' imported but never used",
+                    line, col, fault_kind="UnusedImportFault"
+                ))
+            elif not b.is_import and check_locals:
+                kind = "Parameter" if b.is_param else "Variable"
+                self.errors.append(TypeCheckError(
+                    f"{kind} '{name}' declared but never used",
+                    line, col, fault_kind="UnusedVariableFault"
+                ))
 
     # ── Literals ─────────────────────────────────────────────────────────────
 
@@ -225,14 +291,20 @@ class TypeChecker:
     # ── Variables ─────────────────────────────────────────────────────────────
 
     def visit_VarAccessNode(self, node) -> str:
-        return self.env.lookup(node.token.value)
+        name = node.token.value
+        self.env.mark_used(name)
+        return self.env.lookup(name)
 
     def visit_VarAssignNode(self, node) -> str:
         name = node.var_name_token.value
         if self.env.is_const(name):
             self._err(f"Cannot reassign constant '{name}'", token=node.var_name_token)
         typ = self.visit(node.value_node)
-        self.env.update(name, typ)
+        # Track as a new local when we're inside a function and this is its first appearance
+        if self._in_function_depth > 0 and not self.env.is_defined(name):
+            self.env.define(name, typ, token=node.var_name_token)
+        else:
+            self.env.update(name, typ)
         return typ
 
     def visit_ConstDefNode(self, node) -> str:
@@ -244,7 +316,9 @@ class TypeChecker:
                 f"but assigned a '{actual}' value",
                 token=node.var_token
             )
-        self.env.define_const(node.var_token.value, declared)
+        # Track if inside a function (consts at global level are module-level constants)
+        tok = node.var_token if self._in_function_depth > 0 else None
+        self.env.define_const(node.var_token.value, declared, token=tok)
         return declared
 
     def visit_TypedVarAssignNode(self, node) -> str:
@@ -256,19 +330,29 @@ class TypeChecker:
                 f"but assigned a '{actual}' value",
                 token=node.var_token
             )
-        self.env.update(node.var_token.value, declared)
+        # Typed declarations are always first-time definitions; track if in function
+        if self._in_function_depth > 0:
+            self.env.define(node.var_token.value, declared, token=node.var_token)
+        else:
+            self.env.update(node.var_token.value, declared)
         return declared
 
     def visit_DestructureAssignNode(self, node) -> str:
         self.visit(node.value_node)
         for t in node.var_tokens:
-            self.env.update(t.value, T.UNKNOWN)
+            if self._in_function_depth > 0 and not self.env.is_defined(t.value):
+                self.env.define(t.value, T.UNKNOWN, token=t)
+            else:
+                self.env.update(t.value, T.UNKNOWN)
         return T.UNKNOWN
 
     def visit_DictDestructureAssignNode(self, node) -> str:
         self.visit(node.value_node)
         for t in node.key_tokens:
-            self.env.update(t.value, T.UNKNOWN)
+            if self._in_function_depth > 0 and not self.env.is_defined(t.value):
+                self.env.define(t.value, T.UNKNOWN, token=t)
+            else:
+                self.env.update(t.value, T.UNKNOWN)
         return T.UNKNOWN
 
     # ── Binary / Unary ops ────────────────────────────────────────────────────
@@ -353,34 +437,47 @@ class TypeChecker:
             self.env.define(node.name_token.value, T.FUNCTION)
 
         child_env = TypeEnv(self.env)
-        for pname, ptype in zip(param_names, param_types):
-            child_env.define(pname, ptype)
+        # Track parameters for unused detection
+        for ptoken, ptype in zip(node.arg_tokens, param_types):
+            child_env.define(ptoken.value, ptype, token=ptoken, is_param=True)
+        if node.variadic:
+            child_env.define(node.variadic.value, T.LIST, token=node.variadic, is_param=True)
 
         saved_env, saved_ret = self.env, self._current_return_type
         self.env, self._current_return_type = child_env, return_type
+        self._in_function_depth += 1
 
         for stmt in node.block:
             self.visit(stmt)
 
+        self._in_function_depth -= 1
+        # Report unused params and locals defined directly in this function scope
+        self._report_unused(child_env, check_locals=True, check_imports=True)
         self.env, self._current_return_type = saved_env, saved_ret
         return T.FUNCTION
 
     def visit_LambdaNode(self, node) -> str:
         child_env = TypeEnv(self.env)
         for t in node.param_tokens:
-            child_env.define(t.value, T.UNKNOWN)
+            child_env.define(t.value, T.UNKNOWN, token=t, is_param=True)
         saved = self.env; self.env = child_env
+        self._in_function_depth += 1
         self.visit(node.expr_node)
+        self._in_function_depth -= 1
+        self._report_unused(child_env, check_locals=True, check_imports=True)
         self.env = saved
         return T.FUNCTION
 
     def visit_AnonFuncNode(self, node) -> str:
         child_env = TypeEnv(self.env)
         for t in node.param_tokens:
-            child_env.define(t.value, T.UNKNOWN)
+            child_env.define(t.value, T.UNKNOWN, token=t, is_param=True)
         saved = self.env; self.env = child_env
+        self._in_function_depth += 1
         for stmt in node.block:
             self.visit(stmt)
+        self._in_function_depth -= 1
+        self._report_unused(child_env, check_locals=True, check_imports=True)
         self.env = saved
         return T.FUNCTION
 
@@ -435,18 +532,21 @@ class TypeChecker:
     # ── Control flow ──────────────────────────────────────────────────────────
 
     def visit_IfNode(self, node) -> str:
+        in_fn = self._in_function_depth > 0
         for condition, body in node.cases:
             self.visit(condition)
             child = TypeEnv(self.env)
             saved = self.env; self.env = child
             for stmt in body:
                 self.visit(stmt)
+            self._report_unused(child, check_locals=in_fn, check_imports=True)
             self.env = saved
         if node.else_case:
             child = TypeEnv(self.env)
             saved = self.env; self.env = child
             for stmt in node.else_case:
                 self.visit(stmt)
+            self._report_unused(child, check_locals=in_fn, check_imports=True)
             self.env = saved
         return T.UNKNOWN
 
@@ -461,21 +561,27 @@ class TypeChecker:
         self.visit(node.end_value_node)
         if node.step_node:
             self.visit(node.step_node)
+        in_fn = self._in_function_depth > 0
         child = TypeEnv(self.env)
-        child.define(node.var_name_token.value, T.INT)
+        child.define(node.var_name_token.value, T.INT,
+                     token=node.var_name_token if in_fn else None)
         saved = self.env; self.env = child
         for stmt in node.block:
             self.visit(stmt)
+        self._report_unused(child, check_locals=in_fn, check_imports=True)
         self.env = saved
         return T.UNKNOWN
 
     def visit_ForEachNode(self, node) -> str:
         self.visit(node.iterable_node)
+        in_fn = self._in_function_depth > 0
         child = TypeEnv(self.env)
-        child.define(node.var_name_token.value, T.UNKNOWN)
+        child.define(node.var_name_token.value, T.UNKNOWN,
+                     token=node.var_name_token if in_fn else None)
         saved = self.env; self.env = child
         for stmt in node.block:
             self.visit(stmt)
+        self._report_unused(child, check_locals=in_fn, check_imports=True)
         self.env = saved
         return T.UNKNOWN
 
@@ -509,14 +615,17 @@ class TypeChecker:
     # ── Error handling ────────────────────────────────────────────────────────
 
     def visit_AttemptRescueNode(self, node) -> str:
+        in_fn = self._in_function_depth > 0
         for stmt in node.try_block:
             self.visit(stmt)
         rescue_env = TypeEnv(self.env)
         if node.error_var_token:
-            rescue_env.define(node.error_var_token.value, T.STRING)
+            rescue_env.define(node.error_var_token.value, T.STRING,
+                              token=node.error_var_token if in_fn else None)
         saved = self.env; self.env = rescue_env
         for stmt in node.catch_block:
             self.visit(stmt)
+        self._report_unused(rescue_env, check_locals=in_fn, check_imports=True)
         self.env = saved
         if node.finally_block:
             for stmt in node.finally_block:
@@ -558,10 +667,12 @@ class TypeChecker:
 
     def visit_ImportNode(self, node) -> str:
         if node.alias:
-            self.env.define(node.alias.value, T.UNKNOWN)
+            self.env.define(node.alias.value, T.UNKNOWN, token=node.alias, is_import=True)
         elif node.names:
             for t in node.names:
-                self.env.define(t.value, T.UNKNOWN)
+                self.env.define(t.value, T.UNKNOWN, token=t, is_import=True)
+        # Plain `import "path"` (no alias, no names) dumps into current scope —
+        # we can't know what names it brings in, so no tracking.
         return T.UNKNOWN
 
     # ── Switch / Match ────────────────────────────────────────────────────────

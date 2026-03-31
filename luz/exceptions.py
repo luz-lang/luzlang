@@ -149,6 +149,11 @@ class LoopFault(SemanticFault): pass
 # Distinct from TypeViolationFault (runtime) so callers can tell them apart.
 class TypeCheckFault(SemanticFault): pass
 
+# Raised when a variable, parameter, or import is declared but never read.
+# Mirrors Go's "declared and not used" / "imported and not used" rules.
+class UnusedVariableFault(SemanticFault): pass
+class UnusedImportFault(SemanticFault): pass
+
 
 # ── 3. Runtime Faults ─────────────────────────────────────────────────────────
 # Raised during execution for conditions that only become apparent at runtime.
