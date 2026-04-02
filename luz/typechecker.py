@@ -105,6 +105,15 @@ class T:
         # float32 satisfies float64
         if actual == T.FLOAT32 and declared == T.FLOAT64:
             return True
+        
+        if '[' in declared:
+            base = declared[:declared.index('[')]
+            if declared == actual:
+                return True
+            return False
+        if '[' in actual:
+            base = actual[:actual.index('[')]
+            return declared == base
         return False
 
     @staticmethod

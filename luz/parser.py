@@ -400,6 +400,26 @@ class Parser:
             raise e
         except Exception as e:
             raise ParseFault(f"Error while parsing code: {str(e)}")
+        
+    def parse_type_expr(self):
+        if self.current_token.type == TokenType.NULL:
+            self.advance()
+            return 'null'
+        if self.current_token.type != TokenType.IDENTIFIER:
+            raise UnexpectedTokenFault("Expected type name")
+        base = self.current_token.value
+        self.advance()
+        if self.current_token.type == TokenType.LBRACKET:
+            self.advance()
+            params = [self.parse_type_expr()]
+            while self.current_token.type == TokenType.COMMA:
+                self.advance()
+                params.append(self.parse_type_expr())
+            if self.current_token.type != TokenType.RBRACKET:
+                raise StructureFault("Expected ']' to close type parameter list")
+            self.advance()
+            return f"{base}[{', '.join(params)}]"
+        return base
 
     # statements() collects a sequence of statements until it hits EOF or a
     # closing brace '}'.  The RBRACE check allows this same method to parse
@@ -588,18 +608,37 @@ class Parser:
 
             if next_token and next_token.type == TokenType.COLON:
                 type_tok = self.tokens[self.pos + 2] if self.pos + 2 < len(self.tokens) else None
-                assign_tok = self.tokens[self.pos + 3] if self.pos + 3 < len(self.tokens) else None
-                if (type_tok and type_tok.type in (TokenType.IDENTIFIER, TokenType.NULL) and assign_tok and assign_tok.type == TokenType.ASSIGN):
-                    var_token = self.current_token
-                    self.advance()
-                    self.advance()
-                    type_name = 'null' if self.current_token.type == TokenType.NULL else self.current_token.value
-                    self.advance()
-                    self.advance()
-                    value = self.expr()
-                    node = TypedVarAssignNode(var_token, type_name, value)
-                    node.line = var_token.line; node.col = var_token.col
-                    return node
+                if type_tok and type_tok.type in (TokenType.IDENTIFIER, TokenType.NULL):
+                    # scan past the full type expression (e.g. list[int] or dict[K,V])
+                    scan = self.pos + 3
+                    depth = 0
+                    while scan < len(self.tokens):
+                        t = self.tokens[scan]
+                        if t.type == TokenType.LBRACKET:
+                            depth += 1
+                            scan += 1
+                        elif t.type == TokenType.RBRACKET:
+                            if depth > 0:
+                                depth -= 1
+                                scan += 1
+                            else:
+                                break  # unmatched ']' — stop
+                        elif depth > 0:
+                            scan += 1  # inside brackets: skip commas, type names, etc.
+                        else:
+                            break  # outside brackets — stop (should be '=')
+                    assign_tok = self.tokens[scan] if scan < len(self.tokens) else None
+
+                    if assign_tok and assign_tok.type == TokenType.ASSIGN:
+                        var_token = self.current_token
+                        self.advance()
+                        self.advance()
+                        type_name = self.parse_type_expr()
+                        self.advance()
+                        value = self.expr()
+                        node = TypedVarAssignNode(var_token, type_name, value)
+                        node.line = var_token.line; node.col = var_token.col
+                        return node
                 
 
             # One-token lookahead: if the token after the identifier is '=' or
@@ -757,10 +796,7 @@ class Parser:
             self.advance()
             if self.current_token.type == TokenType.COLON:
                 self.advance()
-                if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
-                    raise UnexpectedTokenFault("Expected type name after ':'")
-                arg_types.append('null' if self.current_token.type == TokenType.NULL else self.current_token.value)
-                self.advance()
+                arg_types.append(self.parse_type_expr())
             else:
                 arg_types.append(None)
             if self.current_token.type == TokenType.ASSIGN:
@@ -787,10 +823,7 @@ class Parser:
         return_type = None
         if self.current_token.type == TokenType.ARROW:
             self.advance()
-            if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
-                raise UnexpectedTokenFault("Expected type name after '->'")
-            return_type = 'null' if self.current_token.type == TokenType.NULL else self.current_token.value 
-            self.advance()
+            return_type = self.parse_type_expr()
 
         if self.current_token.type != TokenType.LBRACE:
             raise StructureFault("Expected '{'")
@@ -919,10 +952,7 @@ class Parser:
         type_name = None
         if self.current_token.type == TokenType.COLON:
             self.advance()  # Consume ':'
-            if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
-                raise UnexpectedTokenFault("Expected type name after ':'")
-            type_name = 'null' if self.current_token.type == TokenType.NULL else self.current_token.value
-            self.advance()
+            type_name = self.parse_type_expr()
 
         if self.current_token.type != TokenType.ASSIGN:
             raise StructureFault("Expected '=' in constant declaration")
@@ -958,10 +988,7 @@ class Parser:
                 raise StructureFault(f"Expected ':' after field name '{field_name_tok.value}'")
             self.advance()  # consume ':'
 
-            if self.current_token.type not in (TokenType.IDENTIFIER, TokenType.NULL):
-                raise UnexpectedTokenFault("Expected type name after ':'")
-            type_name = 'null' if self.current_token.type == TokenType.NULL else self.current_token.value
-            self.advance()
+            type_name = self.parse_type_expr()
 
             default_node = None
             if self.current_token.type == TokenType.ASSIGN:

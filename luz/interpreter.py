@@ -1441,6 +1441,8 @@ class Interpreter:
 
     @staticmethod
     def _check_type(value, type_name):
+        if not isinstance(type_name, str):
+            return False
         if type_name == 'int':
             return isinstance(value, int) and not isinstance(value, bool)
         if type_name == 'float':
@@ -1463,6 +1465,34 @@ class Interpreter:
         # Fixed-size float types — backed by Python float at runtime
         if type_name in ('float32', 'float64'):
             return isinstance(value, float)
+
+        if '[' in type_name:
+            bracket = type_name.index('[')
+            base = type_name[:bracket]
+            inner = type_name[bracket + 1:-1]
+            # split inner on top-level commas (respects nesting)
+            params, depth, cur = [], 0, []
+            for ch in inner:
+                if ch == '[': depth += 1
+                elif ch == ']': depth -= 1
+                if ch == ',' and depth == 0:
+                    params.append(''.join(cur).strip()); cur = []
+                else:
+                    cur.append(ch)
+            if cur:
+                params.append(''.join(cur).strip())
+            if base == 'list':
+                if not isinstance(value, list):
+                    return False
+                return all(Interpreter._check_type(v, params[0]) for v in value) if params else True
+            if base == 'dict':
+                if not isinstance(value, dict):
+                    return False
+                if len(params) == 2:
+                    return (all(Interpreter._check_type(k, params[0]) for k in value) and all(Interpreter._check_type(v, params[1]) for v in value.values()))
+                
+                return True
+
         # Class name - walk the hierarchy to support inheritance
         if isinstance(value, LuzInstance):
             cls = value.luz_class

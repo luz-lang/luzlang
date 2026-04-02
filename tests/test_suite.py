@@ -880,6 +880,78 @@ class TestFixedSizeTypes:
             val(code)
 
 
+# ── Generic collection types ──────────────────────────────────────────────────
+
+class TestGenericTypes:
+    # ── list[T] variable declarations ──
+    def test_list_int_valid(self):
+        assert env("nums: list[int] = [1, 2, 3]", "nums") == [1, 2, 3]
+
+    def test_list_string_valid(self):
+        assert env('words: list[string] = ["a", "b"]', "words") == ["a", "b"]
+
+    def test_list_int_wrong_element_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('nums: list[int] = [1, "dos", 3]')
+
+    def test_list_int_empty_valid(self):
+        assert env("nums: list[int] = []", "nums") == []
+
+    def test_list_float_valid(self):
+        assert env("xs: list[float] = [1.0, 2.5]", "xs") == [1.0, 2.5]
+
+    # ── dict[K, V] ──
+    def test_dict_string_int_valid(self):
+        assert env('scores: dict[string, int] = {"a": 1}', "scores") == {"a": 1}
+
+    def test_dict_wrong_value_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('scores: dict[string, int] = {"a": "oops"}')
+
+    def test_dict_wrong_key_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('scores: dict[string, int] = {1: 2}')
+
+    def test_dict_empty_valid(self):
+        assert env("d: dict[string, float] = {}", "d") == {}
+
+    # ── function parameter ──
+    def test_list_param(self):
+        code = "function f(xs: list[int]) { return xs }\nf([1, 2, 3])"
+        assert val(code) == [1, 2, 3]
+
+    def test_list_param_wrong_element_raises(self):
+        code = 'function f(xs: list[int]) { return xs }\nf([1, "bad"])'
+        with pytest.raises(TypeViolationFault):
+            val(code)
+
+    # ── return type ──
+    def test_list_return_type(self):
+        code = "function f() -> list[int] { return [1, 2] }\nf()"
+        assert val(code) == [1, 2]
+
+    def test_list_return_type_wrong_raises(self):
+        code = 'function f() -> list[int] { return [1, "x"] }\nf()'
+        with pytest.raises(TypeViolationFault):
+            val(code)
+
+    # ── nested generics ──
+    def test_list_of_lists(self):
+        assert env("m: list[list] = [[1], [2]]", "m") == [[1], [2]]
+
+    # ── const ──
+    def test_const_list_int(self):
+        assert env("const ITEMS: list[int] = [10, 20]", "ITEMS") == [10, 20]
+
+    # ── reassignment ──
+    def test_reassign_valid(self):
+        assert env("xs: list[int] = [1]\nxs = [2, 3]", "xs") == [2, 3]
+
+    def test_reassign_wrong_raises(self):
+        with pytest.raises(TypeViolationFault):
+            val('xs: list[int] = [1]\nxs = ["bad"]')
+
+
 class TestDictDotMethods:
     def test_keys(self):
         assert val('keys({"a": 1, "b": 2})') == val('{"a": 1, "b": 2}.keys()')
