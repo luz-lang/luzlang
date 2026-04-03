@@ -1449,6 +1449,11 @@ class Interpreter:
         'uint64': (0,                       18446744073709551615),
     }
 
+    # Cache for parsed generic type strings like "list[int]" or "dict[string, int]".
+    # Maps type_name -> (base, params) so the character-by-character bracket parse
+    # only runs once per unique type string across the entire interpreter lifetime.
+    _TYPE_PARSE_CACHE: dict = {}
+
     @staticmethod
     def _check_type(value, type_name):
         if not isinstance(type_name, str):
@@ -1482,20 +1487,25 @@ class Interpreter:
             return isinstance(value, float)
 
         if '[' in type_name:
-            bracket = type_name.index('[')
-            base = type_name[:bracket]
-            inner = type_name[bracket + 1:-1]
-            # split inner on top-level commas (respects nesting)
-            params, depth, cur = [], 0, []
-            for ch in inner:
-                if ch == '[': depth += 1
-                elif ch == ']': depth -= 1
-                if ch == ',' and depth == 0:
-                    params.append(''.join(cur).strip()); cur = []
-                else:
-                    cur.append(ch)
-            if cur:
-                params.append(''.join(cur).strip())
+            parsed = Interpreter._TYPE_PARSE_CACHE.get(type_name)
+            if parsed is None:
+                bracket = type_name.index('[')
+                base = type_name[:bracket]
+                inner = type_name[bracket + 1:-1]
+                # split inner on top-level commas (respects nesting)
+                params, depth, cur = [], 0, []
+                for ch in inner:
+                    if ch == '[': depth += 1
+                    elif ch == ']': depth -= 1
+                    if ch == ',' and depth == 0:
+                        params.append(''.join(cur).strip()); cur = []
+                    else:
+                        cur.append(ch)
+                if cur:
+                    params.append(''.join(cur).strip())
+                parsed = (base, params)
+                Interpreter._TYPE_PARSE_CACHE[type_name] = parsed
+            base, params = parsed
             if base == 'list':
                 if not isinstance(value, list):
                     return False
@@ -1505,7 +1515,6 @@ class Interpreter:
                     return False
                 if len(params) == 2:
                     return (all(Interpreter._check_type(k, params[0]) for k in value) and all(Interpreter._check_type(v, params[1]) for v in value.values()))
-                
                 return True
 
         # Class name - walk the hierarchy to support inheritance
