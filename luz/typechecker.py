@@ -448,11 +448,16 @@ class TypeChecker:
             return T.FLOAT
         if op == TokenType.IDIV:
             return T.INT
-        if op in (TokenType.MINUS, TokenType.MUL, TokenType.MOD, TokenType.POW):
-            if T.FLOAT in (left, right): return T.FLOAT
-            if left == T.INT and right == T.INT: return T.INT
-        if op == TokenType.PLUS and left == right and left in self._PLUS_COMPATIBLE:
-            return left
+        if op in (TokenType.MINUS, TokenType.MUL, TokenType.MOD, TokenType.POW,
+                  TokenType.PLUS):
+            # Both operands numeric: float wins over int
+            if left in T.NUMERIC and right in T.NUMERIC:
+                if T.FLOAT in (left, right) or left in T.FIXED_FLOATS or right in T.FIXED_FLOATS:
+                    return T.FLOAT
+                return T.INT
+            # Same non-numeric type (string+string, list+list) — only valid for PLUS
+            if op == TokenType.PLUS and left == right and left in self._PLUS_COMPATIBLE:
+                return left
         return T.UNKNOWN
 
     def visit_UnaryOpNode(self, node) -> str:

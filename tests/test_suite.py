@@ -993,6 +993,56 @@ class TestNullableTypes:
         assert env('items: list[int]? = [1, 2]', 'items') == [1, 2]
 
 
+class TestTypeInference:
+    """Type checker propagates inferred types through calls and arithmetic."""
+
+    @staticmethod
+    def tc(code):
+        from luz.typechecker import TypeChecker
+        tokens = Lexer(code).get_tokens()
+        ast = Parser(tokens).parse()
+        return TypeChecker().check(ast)
+
+    # ── function call return type propagates ──
+    def test_call_result_used_in_bad_binop_caught(self):
+        code = 'function f(x: int) -> int { return x }\nresult = f(5)\nwrite(result + "x")'
+        assert self.tc(code)  # should have at least one error
+
+    def test_call_result_used_in_good_binop_clean(self):
+        code = 'function f(x: int) -> int { return x }\nresult = f(5)\nwrite(result + 1)'
+        assert not self.tc(code)
+
+    # ── assignment propagates inferred type ──
+    def test_assign_int_literal_propagates(self):
+        code = 'x = 5\nwrite(x + "bad")'
+        assert self.tc(code)
+
+    def test_assign_binop_propagates(self):
+        code = 'x: int = 5\ny = x * 3\nwrite(y + "bad")'
+        assert self.tc(code)
+
+    # ── arithmetic type rules ──
+    def test_int_plus_float_gives_float(self):
+        code = 'x: int = 5\ny = x + 3.0\nwrite(y + "bad")'
+        assert self.tc(code)  # y should be float, float+"bad" is error
+
+    def test_int_plus_int_gives_int(self):
+        code = 'x: int = 5\ny = x + 3\nwrite(y + "bad")'
+        assert self.tc(code)  # y should be int, int+"bad" is error
+
+    def test_int_div_int_gives_float(self):
+        code = 'x: int = 10\ny = x / 2\nwrite(y + "bad")'
+        assert self.tc(code)
+
+    def test_int_minus_float_gives_float(self):
+        code = 'x: float = 5.0\ny = x - 1\nwrite(y + "bad")'
+        assert self.tc(code)
+
+    def test_clean_arithmetic_no_errors(self):
+        code = 'x: int = 5\ny = x + 3\nz = y * 2'
+        assert not self.tc(code)
+
+
 class TestDictDotMethods:
     def test_keys(self):
         assert val('keys({"a": 1, "b": 2})') == val('{"a": 1, "b": 2}.keys()')
