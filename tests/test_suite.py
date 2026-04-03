@@ -1043,6 +1043,64 @@ class TestTypeInference:
         assert not self.tc(code)
 
 
+class TestClassAttrTypeTracking:
+    """Type checker infers class attribute types from init and propagates through attr access."""
+
+    @staticmethod
+    def tc(code):
+        from luz.typechecker import TypeChecker
+        tokens = Lexer(code).get_tokens()
+        ast = Parser(tokens).parse()
+        return TypeChecker().check(ast)
+
+    _POINT = '''
+class Point {
+    function init(self, x: int, y: int) {
+        self.x = x
+        self.y = y
+    }
+}
+'''
+
+    def test_attr_bad_binop_caught(self):
+        code = self._POINT + 'p = Point(1, 2)\nwrite(p.x + "hello")'
+        assert self.tc(code)
+
+    def test_attr_good_binop_clean(self):
+        code = self._POINT + 'p = Point(1, 2)\nresult = p.x + p.y'
+        assert not self.tc(code)
+
+    def test_attr_from_literal_string(self):
+        code = '''
+class Config {
+    function init(self) {
+        self.name = "default"
+        self.count = 0
+    }
+}
+c = Config()
+write(c.name + 1)
+'''
+        assert self.tc(code)
+
+    def test_attr_from_literal_int_clean(self):
+        code = '''
+class Counter {
+    function init(self) {
+        self.n = 0
+    }
+}
+c = Counter()
+result = c.n + 1
+'''
+        assert not self.tc(code)
+
+    def test_constructor_result_type_propagates_through_alias(self):
+        # q = p also carries the 'Point' type, so q.x + "bad" is caught too
+        code = self._POINT + 'p = Point(1, 2)\nq = p\nwrite(q.x + "bad")'
+        assert self.tc(code)
+
+
 class TestDictDotMethods:
     def test_keys(self):
         assert val('keys({"a": 1, "b": 2})') == val('{"a": 1, "b": 2}.keys()')

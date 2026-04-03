@@ -261,6 +261,11 @@ class TypeChecker:
         self._functions: dict[str, FuncSignature] = {}
         self._current_return_type: str = T.UNKNOWN
         self._in_function_depth: int = 0   # > 0 when inside a function/lambda body
+        # Maps class_name -> {attr_name -> inferred_type}, built from init bodies.
+        self._class_attrs: dict[str, dict[str, str]] = {}
+        # Set to the class name while visiting its init method so that
+        # visit_AttributeAssignNode can record self.<attr> types.
+        self._collecting_attrs_for: str | None = None
         self._setup_builtins()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -660,18 +665,42 @@ class TypeChecker:
         return T.UNKNOWN
 
     def visit_ClassDefNode(self, node) -> str:
-        self.env.define(node.name_token.value, T.UNKNOWN)
+        class_name = node.name_token.value
+        self.env.define(class_name, T.UNKNOWN)
+        # Register the class constructor as a callable returning an instance of
+        # this class.  is_variadic=True skips arity checking since we don't
+        # track the full constructor signature here.
+        self._functions[class_name] = FuncSignature(
+            param_names=[], param_types=[], return_type=class_name, is_variadic=True
+        )
+        self._class_attrs[class_name] = {}
         for method in node.methods:
+            is_init = (method.name_token and method.name_token.value == 'init')
+            if is_init:
+                self._collecting_attrs_for = class_name
             self.visit(method)
+            if is_init:
+                self._collecting_attrs_for = None
         return T.UNKNOWN
 
     def visit_AttributeAccessNode(self, node) -> str:
-        self.visit(node.obj_node)
+        obj_type = self.visit(node.obj_node)
+        if obj_type in self._class_attrs:
+            return self._class_attrs[obj_type].get(node.attr_token.value, T.UNKNOWN)
         return T.UNKNOWN
 
     def visit_AttributeAssignNode(self, node) -> str:
         self.visit(node.obj_node)
-        self.visit(node.value_node)
+        val_type = self.visit(node.value_node)
+        # While scanning the init method, record the inferred type of each
+        # self.<attr> assignment (first assignment wins).
+        if (self._collecting_attrs_for is not None
+                and isinstance(node.obj_node, VarAccessNode)
+                and node.obj_node.token.value == 'self'):
+            attr = node.attr_token.value
+            attrs = self._class_attrs[self._collecting_attrs_for]
+            if attr not in attrs:
+                attrs[attr] = val_type
         return T.UNKNOWN
 
     # ── Error handling ────────────────────────────────────────────────────────

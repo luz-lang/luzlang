@@ -230,6 +230,11 @@ def tokenize(source: str) -> list:
                 value = int(value)
             elif py_type is TokenType.FLOAT and value is not None:
                 value = float(value)
+            # The C lexer emits SELF without a value string; supply it so that
+            # the rest of the pipeline (typechecker, error messages) can use
+            # token.value == 'self' just like the Python lexer does.
+            elif py_type is TokenType.SELF and value is None:
+                value = 'self'
 
             tokens.append(Token(py_type, value, ct.line, ct.col))
     finally:
