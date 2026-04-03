@@ -5,6 +5,32 @@ Format: `## [version] - YYYY-MM-DD` followed by categorized entries.
 
 ---
 
+## [1.18.0] - 2026-04-03
+
+### Added
+- Nullable types: `T?` syntax — a variable declared as `int?` accepts both `int` values and `null`; a plain `int` rejects `null` at runtime and at the type-checker level
+- Generic collection types: `list[T]` and `dict[K, V]` — type parameters are enforced on assignment and on function call arguments/return values
+- Fixed-size numeric types: `int8`, `int16`, `int32`, `int64`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64` — backed by Python `int`/`float` at runtime with range/overflow checks
+- `struct` keyword for typed, value-type data containers with optional default field values
+- `const` keyword for immutable bindings — reassignment raises `InvalidUsageFault`
+- Compile-time type checker pass — runs after parsing and before execution; collects all type errors rather than stopping at the first one
+- Unused variable, import, and parameter detector (Go-style) — names prefixed with `_` are exempt
+- `string.len()` dot method, consistent with `list.len()` and `dict.len()`
+- `list.sort()` and `list.reverse()` dot methods
+- Type checker now infers return types through function calls and propagates them through arithmetic (`int + float → float`, `int / int → float`, etc.)
+- Type checker now tracks class attribute types inferred from `init` body and returns the correct type for `instance.attr` access
+
+### Fixed
+- `clamp()` now raises `ArgumentFault` when `low > high` instead of silently returning a wrong value
+- `insert()` now raises `IndexFault` for out-of-bounds indices
+- C lexer bridge: `self` tokens were emitted without a value (`None`); now correctly carry `'self'` to match the Python lexer
+
+### Performance
+- Scope chain: `assign()` previously walked the scope chain twice (once to check existence via `lookup()`, once to update); replaced with a single `_find_scope()` traversal (~31% faster on variable-heavy programs)
+- Type checking: parsed generic type strings (`list[int]`, `dict[string, int]`, …) are now cached in `Interpreter._TYPE_PARSE_CACHE` so the character-by-character bracket parse runs only once per unique type string (~1.5x faster on the type-check hot path)
+
+---
+
 ## [1.17.0] - 2026-03-29
 
 ### Added
