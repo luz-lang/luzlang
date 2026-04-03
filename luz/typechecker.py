@@ -86,6 +86,11 @@ class T:
             return True
         if declared == actual:
             return True
+        # Nullable type: T? accepts null or any value compatible with T
+        if declared.endswith('?'):
+            if actual == T.NULL:
+                return True
+            return T.compatible(declared[:-1], actual)
         if declared == T.NUMBER and actual in (T.INT, T.FLOAT):
             return True
         # Any fixed-size int satisfies 'int' or 'number'

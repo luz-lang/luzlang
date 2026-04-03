@@ -502,9 +502,7 @@ class Lexer:
                     self.advance()
                     tokens.append(Token(TokenType.NULL_COALESCE, None, line, col))
                 else:
-                    e = InvalidTokenFault("Expected '?' after '?' for null-coalescing operator '??'")
-                    e.line = line; e.col = col
-                    raise e
+                    tokens.append(Token(TokenType.QUESTION, None, line, col))
 
             else:
                 # No rule matched — the character is not part of the Luz alphabet.

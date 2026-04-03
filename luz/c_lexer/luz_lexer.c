@@ -537,8 +537,7 @@ static CToken lex_operator(CLexer* lex) {
         case '?':
             advance(lex);
             if (p == '?') { advance(lex); return make_token(TT_NULL_COALESCE, line, col); }
-            buf[0] = c; buf[1] = '\0';
-            return make_value_token(TT_ERROR, buf, line, col);
+            return make_token(TT_QUESTION, line, col);
 
         case '.':
             advance(lex);

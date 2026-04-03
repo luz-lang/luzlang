@@ -952,6 +952,47 @@ class TestGenericTypes:
             val('xs: list[int] = [1]\nxs = ["bad"]')
 
 
+class TestNullableTypes:
+    # ── basic nullable declarations ──
+    def test_nullable_string_with_null(self):
+        assert env('name: string? = null', 'name') is None
+
+    def test_nullable_int_with_null(self):
+        assert env('x: int? = null', 'x') is None
+
+    def test_nullable_int_with_value(self):
+        assert env('x: int? = 42', 'x') == 42
+
+    def test_nullable_string_with_value(self):
+        assert env('name: string? = "Alice"', 'name') == "Alice"
+
+    # ── non-nullable rejects null ──
+    def test_non_nullable_int_rejects_null(self):
+        with pytest.raises(TypeViolationFault):
+            val('x: int = null')
+
+    def test_non_nullable_string_rejects_null(self):
+        with pytest.raises(TypeViolationFault):
+            val('x: string = null')
+
+    # ── reassignment ──
+    def test_nullable_reassign_to_null(self):
+        assert env('x: int? = 5\nx = null', 'x') is None
+
+    def test_nullable_reassign_to_value(self):
+        assert env('x: int? = null\nx = 7', 'x') == 7
+
+    # ── generic nullable ──
+    def test_nullable_list_with_null(self):
+        assert env('items: list? = null', 'items') is None
+
+    def test_nullable_generic_list_with_null(self):
+        assert env('items: list[int]? = null', 'items') is None
+
+    def test_nullable_generic_list_with_value(self):
+        assert env('items: list[int]? = [1, 2]', 'items') == [1, 2]
+
+
 class TestDictDotMethods:
     def test_keys(self):
         assert val('keys({"a": 1, "b": 2})') == val('{"a": 1, "b": 2}.keys()')

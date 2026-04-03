@@ -418,7 +418,10 @@ class Parser:
             if self.current_token.type != TokenType.RBRACKET:
                 raise StructureFault("Expected ']' to close type parameter list")
             self.advance()
-            return f"{base}[{', '.join(params)}]"
+            base = f"{base}[{', '.join(params)}]"
+        if self.current_token.type == TokenType.QUESTION:
+            self.advance()
+            return f"{base}?"
         return base
 
     # statements() collects a sequence of statements until it hits EOF or a
@@ -625,6 +628,8 @@ class Parser:
                                 break  # unmatched ']' — stop
                         elif depth > 0:
                             scan += 1  # inside brackets: skip commas, type names, etc.
+                        elif t.type == TokenType.QUESTION:
+                            scan += 1  # nullable suffix — part of the type expression
                         else:
                             break  # outside brackets — stop (should be '=')
                     assign_tok = self.tokens[scan] if scan < len(self.tokens) else None

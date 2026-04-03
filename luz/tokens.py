@@ -120,6 +120,7 @@ class TokenType(Enum):
 
     # ── Null coalescing ───────────────────────────────────────────────────────
     NULL_COALESCE = auto()  # ?? — returns left if not null, otherwise right
+    QUESTION = auto()       # ?  — used in nullable type annotations: int?
 
     # ── Membership testing ────────────────────────────────────────────────────
     NOT_IN = auto()  # not in — synthetic token produced by the parser

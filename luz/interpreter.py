@@ -1443,6 +1443,11 @@ class Interpreter:
     def _check_type(value, type_name):
         if not isinstance(type_name, str):
             return False
+        # Nullable type: T? accepts null or any value of type T
+        if type_name.endswith('?'):
+            if value is None:
+                return True
+            return Interpreter._check_type(value, type_name[:-1])
         if type_name == 'int':
             return isinstance(value, int) and not isinstance(value, bool)
         if type_name == 'float':
