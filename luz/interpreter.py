@@ -113,6 +113,18 @@ class Environment:
             names += self.parent._all_names()
         return names
 
+    def _find_scope(self, name):
+        """Return the scope that owns *name*, or None if not reachable.
+
+        Stops at function-scope boundaries so that block-level scopes
+        (if/while/for) cannot reach past the enclosing function.
+        """
+        if name in self.records:
+            return self
+        if self.parent and not self.is_function_scope:
+            return self.parent._find_scope(name)
+        return None
+
     # assign() updates an existing variable, or creates it at the appropriate
     # scope level if it doesn't exist yet.
     #
@@ -137,11 +149,9 @@ class Environment:
         # a variable defined inside an if/while/for block from silently
         # escaping to the function or global scope.
         if self.parent and not self.is_function_scope:
-            try:
-                self.parent.lookup(name)
-                return self.parent.assign(name, value)
-            except UndefinedSymbolFault:
-                pass
+            scope = self.parent._find_scope(name)
+            if scope is not None:
+                return scope.assign(name, value)
         # Name not found in any reachable outer scope: create it here.
         self.records[name] = value
         return value
