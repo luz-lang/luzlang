@@ -4,6 +4,7 @@ Thanks to everyone who has contributed to Luz!
 
 ---
 
+- **[Vimal1771](https://github.com/Vimal1711)**
 - **[jtenorio-dev](https://github.com/jtenorio-dev)**
 - **[gokulkomath](https://github.com/gokulkomath)**
 - **[mac-agent](https://github.com/mac-agent)**

@@ -45,3 +45,4 @@ jobs:
           python main.py examples/19_dot_methods.luz
           python main.py examples/20_data_structures.luz
           python main.py examples/21_algorithms.luz
+          python main.py examples/22_nullable_types.luz
