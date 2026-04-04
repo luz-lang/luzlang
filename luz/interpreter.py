@@ -1625,7 +1625,9 @@ class Interpreter:
                 raise TypeViolationFault("Index for pop() must be an integer")
             return list_obj.pop(index)
         except IndexError:
-            raise IndexFault("Index out of range in pop() operation")
+            if len(list_obj) == 0:
+                raise RuntimeFault("Cannot pop from an empty list")
+            raise IndexFault(f"Index {index} is out of range in pop() operation for list of size {len(list_obj)}")
 
     def builtin_reverse(self, value):
         """Return a reversed copy of a list or string"""
