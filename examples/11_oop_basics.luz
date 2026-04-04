@@ -1,8 +1,8 @@
-# 11_oop_basics.luz
-# Classes, instances, attributes, and methods.
+# 11 - OOP Basics
+# Classes, instances, typed attributes, and methods.
 
 class Person {
-    function init(self, name, age) {
+    function init(self, name: string, age: int) {
         self.name = name
         self.age  = age
     }
@@ -11,7 +11,7 @@ class Person {
         write($"Hi, I am {self.name} and I am {self.age} years old.")
     }
 
-    function is_adult(self) {
+    function is_adult(self) -> bool {
         return self.age >= 18
     }
 
@@ -19,10 +19,14 @@ class Person {
         self.age = self.age + 1
         write($"{self.name} is now {self.age}!")
     }
+
+    function to_str(self) -> string {
+        return $"Person({self.name}, {self.age})"
+    }
 }
 
-alice = Person("Alice", 30)
-bob   = Person("Bob", 16)
+alice: Person = Person("Alice", 30)
+bob: Person   = Person("Bob", 16)
 
 alice.greet()
 bob.greet()
@@ -32,3 +36,7 @@ write($"Bob is an adult:   {bob.is_adult()}")
 
 bob.birthday()
 write($"Bob is an adult now: {bob.is_adult()}")
+
+write("")
+write($"typeof(alice) = {typeof(alice)}")
+write($"instanceof(alice, Person) = {instanceof(alice, Person)}")

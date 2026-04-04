@@ -1,10 +1,12 @@
-# Hello World
-# The classic first program, expanded a little.
+# 01 - Hello World
+# Basic I/O, typed variables, and format strings.
 
-write("Hello, World!")
+greeting: string = "Hello, World!"
+write(greeting)
 
-name = listen("What is your name? ")
-write("Nice to meet you, " + name + "!")
+name: string = listen("What is your name? ")
+write($"Nice to meet you, {name}!")
 
-age = listen("How old are you? ")
-write("In 10 years you will be " + to_str(age + 10) + " years old.")
+age_str: string = listen("How old are you? ")
+age: int = to_int(age_str)
+write($"In 10 years you will be {age + 10} years old.")

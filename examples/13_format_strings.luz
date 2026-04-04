@@ -1,31 +1,31 @@
-# 13_format_strings.luz
-# Format strings: $"text {expression} text"
+# 13 - Format Strings
+# $"text {expression} text" interpolation syntax.
 
-name  = "Luz"
-version = 1
+name: string    = "Luz"
+version: int    = 1
 write($"Welcome to {name} v{version}!")
 
-# Expressions inside {}
-a = 10
-b = 3
+# Arithmetic expressions inside {}
+a: int = 10
+b: int = 3
 write($"{a} + {b} = {a + b}")
 write($"{a} * {b} = {a * b}")
 write($"{a} / {b} = {round(a / b, 4)}")
 
 # Function calls inside {}
-words = ["the", "quick", "brown", "fox"]
-sep = " "
-write($"Word count: {len(words)}")
-write($"Joined: {join(sep, words)}")
-write($"Uppercase first: {uppercase(words[0])}")
+words: list[string] = ["the", "quick", "brown", "fox"]
+sep: string = " "
+write($"Word count: {words.len()}")
+write($"Joined: {words.join(sep)}")
+write($"Uppercase first: {words[0].uppercase()}")
 
 # Null and booleans display correctly
-x = null
-flag = true
+x: int?    = null
+flag: bool = true
 write($"x is {x}, flag is {flag}")
 
-# Nested format — typeof inside {}
-values = [42, 3.14, "hello", true, null]
+# typeof inside format string
+values: list = [42, 3.14, "hello", true, null]
 for val in values {
     write($"  {val} -> {typeof(val)}")
 }

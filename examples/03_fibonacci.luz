@@ -1,37 +1,30 @@
-# Fibonacci
-# Two implementations: recursive and iterative.
-# The iterative version handles large N efficiently.
+# 03 - Fibonacci
+# Recursive and iterative implementations with typed signatures.
 
-function fib_recursive(n) {
-    if n <= 1 {
-        return n
-    }
+function fib_recursive(n: int) -> int {
+    if n <= 1 { return n }
     return fib_recursive(n - 1) + fib_recursive(n - 2)
 }
 
-function fib_iterative(n) {
-    if n <= 1 {
-        return n
-    }
-    a = 0
-    b = 1
-    i = 2
-    while i <= n {
-        c = a + b
+function fib_iterative(n: int) -> int {
+    if n <= 1 { return n }
+    a: int = 0
+    b: int = 1
+    for i = 2 to n {
+        c: int = a + b
         a = b
         b = c
-        i = i + 1
     }
     return b
 }
 
 write("--- Recursive (first 12 terms) ---")
 for i = 0 to 11 {
-    write("fib(" + to_str(i) + ") = " + to_str(fib_recursive(i)))
+    write($"fib({i}) = {fib_recursive(i)}")
 }
 
 write("")
 write("--- Iterative (first 20 terms) ---")
 for i = 0 to 19 {
-    write("fib(" + to_str(i) + ") = " + to_str(fib_iterative(i)))
+    write($"fib({i}) = {fib_iterative(i)}")
 }

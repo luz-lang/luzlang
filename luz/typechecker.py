@@ -113,7 +113,8 @@ class T:
         
         if '[' in declared:
             base = declared[:declared.index('[')]
-            if declared == actual:
+            # bare list/dict literal satisfies list[T]/dict[K,V]
+            if declared == actual or actual == base:
                 return True
             return False
         if '[' in actual:
@@ -243,6 +244,7 @@ class FuncSignature:
     param_types: list
     return_type: str
     is_variadic: bool = False
+    min_arity:   int  = -1   # -1 means "same as len(param_types)" (no defaults)
 
 
 # ── Type checker ──────────────────────────────────────────────────────────────
@@ -485,22 +487,32 @@ class TypeChecker:
         param_types = [t if t else T.UNKNOWN for t in param_types]
         return_type = node.return_type if node.return_type else T.UNKNOWN
 
+        # min_arity = number of required params (those without a default value)
+        defaults   = node.defaults if node.defaults else [None] * len(param_names)
+        min_arity  = sum(1 for d in defaults if d is None)
+        # If variadic, the variadic param itself is optional (can receive 0 args)
+        if node.variadic:
+            min_arity = max(0, min_arity - 1)
+
         sig = FuncSignature(
             param_names=param_names,
             param_types=param_types,
             return_type=return_type,
             is_variadic=bool(node.variadic),
+            min_arity=min_arity,
         )
         if node.name_token:
             self._functions[node.name_token.value] = sig
             self.env.define(node.name_token.value, T.FUNCTION)
 
         child_env = TypeEnv(self.env)
+        # The variadic param (last in arg_tokens when node.variadic is True)
+        # always collects a list — override its type before defining.
+        if node.variadic and param_types:
+            param_types[-1] = T.LIST
         # Track parameters for unused detection
         for ptoken, ptype in zip(node.arg_tokens, param_types):
             child_env.define(ptoken.value, ptype, token=ptoken, is_param=True)
-        if node.variadic:
-            child_env.define(node.variadic.value, T.LIST, token=node.variadic, is_param=True)
 
         saved_env, saved_ret = self.env, self._current_return_type
         self.env, self._current_return_type = child_env, return_type
@@ -559,12 +571,20 @@ class TypeChecker:
 
         sig = self._functions.get(name)
         if sig and not sig.is_variadic:
-            if len(arg_types) != len(sig.param_types):
-                self._err(
-                    f"'{name}' expects {len(sig.param_types)} argument(s), "
-                    f"got {len(arg_types)}",
-                    token=node.func_name_token
-                )
+            min_a  = sig.min_arity if sig.min_arity >= 0 else len(sig.param_types)
+            max_a  = len(sig.param_types)
+            n_args = len(arg_types) + len(node.kwargs)
+            if not (min_a <= n_args <= max_a):
+                if min_a == max_a:
+                    self._err(
+                        f"'{name}' expects {max_a} argument(s), got {n_args}",
+                        token=node.func_name_token
+                    )
+                else:
+                    self._err(
+                        f"'{name}' expects {min_a}–{max_a} argument(s), got {n_args}",
+                        token=node.func_name_token
+                    )
             else:
                 for actual, declared, pname in zip(arg_types, sig.param_types, sig.param_names):
                     if not T.compatible(declared, actual):
@@ -730,18 +750,18 @@ class TypeChecker:
     # ── Collections / indexing ────────────────────────────────────────────────
 
     def visit_IndexAccessNode(self, node) -> str:
-        self.visit(node.obj_node)
+        self.visit(node.base_node)
         self.visit(node.index_node)
         return T.UNKNOWN
 
     def visit_SliceNode(self, node) -> str:
-        self.visit(node.obj_node)
-        for n in (node.start, node.end, node.step):
+        self.visit(node.base_node)
+        for n in (node.start_node, node.end_node, node.step_node):
             if n: self.visit(n)
         return T.UNKNOWN
 
     def visit_IndexAssignNode(self, node) -> str:
-        self.visit(node.obj_node)
+        self.visit(node.base_node)
         self.visit(node.index_node)
         self.visit(node.value_node)
         return T.UNKNOWN

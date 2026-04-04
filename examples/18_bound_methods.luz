@@ -1,23 +1,23 @@
-# 18_bound_methods.luz
-# Bound methods: storing and passing methods as values.
+# 18 - Bound Methods
+# Storing and passing methods as first-class values.
 
 class Counter {
-    function init(self, start) {
+    function init(self, start: int) {
         self.value = start
     }
-    function increment(self) {
+    function increment(self) -> int {
         self.value = self.value + 1
         return self.value
     }
     function reset(self) {
         self.value = 0
     }
-    function get(self) {
+    function get(self) -> int {
         return self.value
     }
 }
 
-c = Counter(0)
+c: Counter = Counter(0)
 
 # Store method in a variable — self is bound automatically
 inc = c.increment
@@ -25,22 +25,24 @@ write(inc())   # 1
 write(inc())   # 2
 write(inc())   # 3
 
+write("")
+
 # Pass a bound method to a higher-order function
-function repeat(f, times) {
-    i = 0
-    while i < times {
+function repeat(f, times: int) {
+    for i = 0 to times - 1 {
         f()
-        i += 1
     }
 }
 
 repeat(inc, 3)
-write(c.get())   # 6
+write($"Counter after repeat(3): {c.get()}")   # 6
+
+write("")
 
 # Multiple instances, each with their own bound method
 class Timer {
-    function init(self, name) {
-        self.name = name
+    function init(self, name: string) {
+        self.name  = name
         self.ticks = 0
     }
     function tick(self) {
@@ -49,8 +51,8 @@ class Timer {
     }
 }
 
-t1 = Timer("A")
-t2 = Timer("B")
+t1: Timer = Timer("A")
+t2: Timer = Timer("B")
 
 tick_a = t1.tick
 tick_b = t2.tick

@@ -1,35 +1,35 @@
-# 16_closures.luz
-# Higher-order functions, closures, and functional patterns.
+# 16 - Closures and Higher-Order Functions
+# Closures, bound methods, map/filter/reduce patterns.
 
 class Counter {
-    function init(self, start) { self.n = start }
-    function increment(self) { self.n = self.n + 1   return self.n }
+    function init(self, start: int) { self.n = start }
+    function increment(self) -> int { self.n = self.n + 1   return self.n }
 }
 
-function make_counter(start) {
-    c = Counter(start)
+function make_counter(start: int) {
+    c: Counter = Counter(start)
     return c.increment
 }
 
-function make_multiplier(factor) {
+function make_multiplier(factor: int) {
     return fn(x) => x * factor
 }
 
-function map_list(lst, f) {
-    result = []
+function map_list(lst: list, f) -> list {
+    result: list = []
     for item in lst { result.append(f(item)) }
     return result
 }
 
-function filter_list(lst, pred) {
-    result = []
+function filter_list(lst: list, pred) -> list {
+    result: list = []
     for item in lst {
         if pred(item) { result.append(item) }
     }
     return result
 }
 
-function reduce_list(lst, f, acc) {
+function reduce_list(lst: list, f, acc) {
     for item in lst { acc = f(acc, item) }
     return acc
 }
@@ -40,19 +40,23 @@ write(next())   # 1
 write(next())   # 2
 write(next())   # 3
 
+write("")
+
 # Multiplier factory
-double  = make_multiplier(2)
-triple  = make_multiplier(3)
-nums    = [1, 2, 3, 4, 5]
+double: any = make_multiplier(2)
+triple: any = make_multiplier(3)
+nums: list[int] = [1, 2, 3, 4, 5]
 
 write(map_list(nums, double))         # [2, 4, 6, 8, 10]
 write(map_list(nums, triple))         # [3, 6, 9, 12, 15]
 
+write("")
+
 # Filter
-evens = filter_list(nums, fn(x) => x % 2 == 0)
+evens: list = filter_list(nums, fn(x) => x % 2 == 0)
 write(evens)                          # [2, 4]
 
 # Reduce
-total   = reduce_list(nums, fn(a, b) => a + b, 0)
-product = reduce_list(nums, fn(a, b) => a * b, 1)
+total: int   = reduce_list(nums, fn(a, b) => a + b, 0)
+product: int = reduce_list(nums, fn(a, b) => a * b, 1)
 write($"sum={total} product={product}")   # sum=15 product=120

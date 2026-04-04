@@ -1,0 +1,53 @@
+# 24 - Fixed-Size Numeric Types
+# int8/16/32/64, uint8/16/32/64, float32/float64.
+# The interpreter enforces range and precision at assignment time.
+
+write("=== Signed integers ===")
+a: int8  = 127
+b: int16 = 32767
+c: int32 = 2147483647
+d: int64 = 9007199254740992
+
+write($"int8  max : {a}")
+write($"int16 max : {b}")
+write($"int32 max : {c}")
+write($"int64 value: {d}")
+
+write("")
+write("=== Unsigned integers ===")
+u8:  uint8  = 255
+u16: uint16 = 65535
+u32: uint32 = 4294967295
+
+write($"uint8  max : {u8}")
+write($"uint16 max : {u16}")
+write($"uint32 max : {u32}")
+
+write("")
+write("=== Floating-point precision ===")
+pi32: float32 = 3.141592653589793
+pi64: float64 = 3.141592653589793
+
+write($"float32 pi : {pi32}")    # lower precision
+write($"float64 pi : {pi64}")    # higher precision
+
+write("")
+write("=== Range overflow protection ===")
+attempt {
+    overflow: int8 = 200   # int8 max is 127 → should raise
+} rescue (e) {
+    write($"int8 overflow caught: {e}")
+}
+
+attempt {
+    underflow: uint8 = -1  # uint8 min is 0 → should raise
+} rescue (e) {
+    write($"uint8 underflow caught: {e}")
+}
+
+write("")
+write("=== Width compatibility (narrower satisfies wider) ===")
+# int8 value can be assigned to an int16 or int32 annotated variable
+small: int8  = 42
+wider: int32 = small
+write($"int8({small}) fits int32: {wider}")

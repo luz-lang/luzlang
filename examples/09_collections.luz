@@ -1,59 +1,58 @@
-# Collections
-# Demonstrates lists and dictionaries: creation, access,
-# mutation, and iteration patterns.
+# 09 - Collections
+# Lists and dictionaries: creation, access, mutation, and iteration.
 
 write("=== Lists ===")
 
-scores = [88, 72, 95, 61, 84, 77, 91]
+scores: list[int] = [88, 72, 95, 61, 84, 77, 91]
 write("Scores:", scores)
-write("Count :", len(scores))
+write($"Count : {scores.len()}")
 
-# Manual sum and max using a loop
-total = 0
-best = scores[0]
-i = 0
-while i < len(scores) {
-    total = total + scores[i]
-    if scores[i] > best {
-        best = scores[i]
-    }
-    i = i + 1
+total: int = 0
+best: int  = scores[0]
+for s in scores {
+    total = total + s
+    if s > best { best = s }
 }
 
-average = total / len(scores)
-write("Total  :", total)
-write("Average:", average)
-write("Best   :", best)
+average: float = round(total / scores.len(), 2)
+write($"Total  : {total}")
+write($"Average: {average}")
+write($"Best   : {best}")
+
+write("")
+
+# Built-in aggregate functions
+write($"sum()  : {sum(scores)}")
+write($"max()  : {max(scores)}")
+write($"min()  : {min(scores)}")
 
 write("")
 
 # Filter: keep only passing scores (>= 70)
-passing = []
-i = 0
-while i < len(scores) {
-    if scores[i] >= 70 {
-        append(passing, scores[i])
-    }
-    i = i + 1
-}
+passing: list[int] = [s for s in scores if s >= 70]
 write("Passing scores:", passing)
 
 write("")
 write("=== Dictionaries ===")
 
-person = {
+person: dict[string, any] = {
     "name": "Alice",
     "age": 30,
     "city": "Madrid",
     "score": 95
 }
 
-write("Name :", person["name"])
-write("Age  :", person["age"])
-write("City :", person["city"])
+name_key: string = "name"
+age_key: string  = "age"
+city_key: string = "city"
 
-write("Keys  :", keys(person))
-write("Values:", values(person))
+write($"Name : {person[name_key]}")
+write($"Age  : {person[age_key]}")
+write($"City : {person[city_key]}")
+
+write("Keys  :", person.keys())
+write("Values:", person.values())
+write($"Length: {person.len()}")
 
 person["age"] = 31
 person["language"] = "Luz"
@@ -62,18 +61,15 @@ write("Updated:", person)
 write("")
 write("=== Dictionary as frequency counter ===")
 
-words = ["apple", "banana", "apple", "cherry", "banana", "apple"]
-freq = {}
+words: list[string] = ["apple", "banana", "apple", "cherry", "banana", "apple"]
+freq: dict[string, int] = {}
 
-i = 0
-while i < len(words) {
-    word = words[i]
-    if contains(join(",", keys(freq)), word) {
+for word in words {
+    if word in freq {
         freq[word] = freq[word] + 1
     } else {
         freq[word] = 1
     }
-    i = i + 1
 }
 
 write("Words  :", words)
@@ -82,16 +78,16 @@ write("Counts :", freq)
 write("")
 write("=== Nested structures ===")
 
-students = [
+students: list = [
     {"name": "Alice", "grade": 92},
     {"name": "Bob",   "grade": 78},
     {"name": "Carol", "grade": 85}
 ]
 
+name_field:  string = "name"
+grade_field: string = "grade"
+
 write("Student grades:")
-i = 0
-while i < len(students) {
-    s = students[i]
-    write("  " + s["name"] + " → " + to_str(s["grade"]))
-    i = i + 1
+for s in students {
+    write($"  {s[name_field]} → {s[grade_field]}")
 }

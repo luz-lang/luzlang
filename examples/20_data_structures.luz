@@ -1,5 +1,5 @@
-# 20_data_structures.luz
-# Stack, queue, and matrix implemented with classes.
+# 20 - Data Structures
+# Stack, Queue, and Matrix implemented with classes and typed attributes.
 
 # ── Stack ─────────────────────────────────────────────────────────────────────
 
@@ -11,27 +11,29 @@ class Stack {
     }
 
     function pop(self) {
-        if self.data.len() == 0 { alert("Stack underflow") }
+        if self.data.len() == 0 { alert "Stack underflow" }
         return self.data.pop()
     }
 
     function peek(self) {
-        n = self.data.len()
-        if n == 0 { alert("Stack is empty") }
+        n: int = self.data.len()
+        if n == 0 { alert "Stack is empty" }
         return self.data[n - 1]
     }
 
-    function size(self) { return self.data.len() }
-    function is_empty(self) { return self.data.len() == 0 }
+    function size(self) -> int { return self.data.len() }
+    function is_empty(self) -> bool { return self.data.len() == 0 }
 }
 
-s = Stack()
+s: Stack = Stack()
 s.push(10)
 s.push(20)
 s.push(30)
 write($"peek: {s.peek()}")   # 30
 write($"pop:  {s.pop()}")    # 30
 write($"size: {s.size()}")   # 2
+
+write("")
 
 # ── Queue ─────────────────────────────────────────────────────────────────────
 
@@ -43,50 +45,52 @@ class Queue {
     }
 
     function dequeue(self) {
-        if self.data.len() == 0 { alert("Queue is empty") }
+        if self.data.len() == 0 { alert "Queue is empty" }
         return self.data.pop(0)
     }
 
     function front(self) {
-        if self.data.len() == 0 { alert("Queue is empty") }
+        if self.data.len() == 0 { alert "Queue is empty" }
         return self.data[0]
     }
 
-    function size(self) { return self.data.len() }
-    function is_empty(self) { return self.data.len() == 0 }
+    function size(self) -> int { return self.data.len() }
+    function is_empty(self) -> bool { return self.data.len() == 0 }
 }
 
-q = Queue()
+q: Queue = Queue()
 q.enqueue("first")
 q.enqueue("second")
 q.enqueue("third")
-write(q.dequeue())   # first
-write(q.front())     # second
-write($"queue size: {q.size()}")   # 2
+write(q.dequeue())                  # first
+write(q.front())                    # second
+write($"queue size: {q.size()}")    # 2
+
+write("")
 
 # ── Matrix ────────────────────────────────────────────────────────────────────
 
 class Matrix {
-    function init(self, rows, cols) {
+    function init(self, rows: int, cols: int) {
         self.rows = rows
         self.cols = cols
         self.data = []
         for i = 0 to rows - 1 {
-            row = []
+            row: list[int] = []
             for j = 0 to cols - 1 { row.append(0) }
             self.data.append(row)
         }
     }
 
-    function get(self, r, c) { return self.data[r][c] }
-    function set(self, r, c, val) { self.data[r][c] = val }
+    function get(self, r: int, c: int) { return self.data[r][c] }
+    function set(self, r: int, c: int, val: int) { self.data[r][c] = val }
 
     function print(self) {
         for row in self.data { write(row) }
     }
 }
 
-m = Matrix(3, 3)
+m: Matrix = Matrix(3, 3)
 m.set(0, 0, 1)
 m.set(1, 1, 1)
 m.set(2, 2, 1)

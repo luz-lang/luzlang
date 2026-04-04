@@ -1,0 +1,70 @@
+# 25 - Switch and Match
+# switch — multi-branch statement (like if/elif chains).
+# match — expression that returns a value from the first matching arm.
+
+write("=== switch statement ===")
+
+function describe_day(day: int) -> string {
+    switch day {
+        case 1 { return "Monday" }
+        case 2 { return "Tuesday" }
+        case 3 { return "Wednesday" }
+        case 4 { return "Thursday" }
+        case 5 { return "Friday" }
+        case 6, 7 { return "Weekend" }
+        else      { return "Invalid day" }
+    }
+}
+
+for d = 1 to 8 {
+    write($"Day {d}: {describe_day(d)}")
+}
+
+write("")
+write("=== switch with strings ===")
+
+function http_status(code: int) {
+    switch code {
+        case 200 { write("OK") }
+        case 201 { write("Created") }
+        case 400 { write("Bad Request") }
+        case 401 { write("Unauthorized") }
+        case 404 { write("Not Found") }
+        case 500 { write("Internal Server Error") }
+        else     { write($"Unknown status: {code}") }
+    }
+}
+
+for code in [200, 201, 404, 500, 418] {
+    write($"{code}: ")
+    http_status(code)
+}
+
+write("")
+write("=== match expression ===")
+# match returns the value of the first matching arm
+
+for n in [1, 2, 3, 4, 5] {
+    label: string = match n {
+        1    => "one"
+        2    => "two"
+        3, 4 => "three or four"
+        _    => "many"
+    }
+    write($"{n} → {label}")
+}
+
+write("")
+
+# match inside a format string
+scores: list[int] = [100, 85, 70, 55, 40]
+for score in scores {
+    grade: string = match score {
+        100     => "A+"
+        85      => "B"
+        70      => "C"
+        55      => "D"
+        _       => "F"
+    }
+    write($"Score {score} = grade {grade}")
+}

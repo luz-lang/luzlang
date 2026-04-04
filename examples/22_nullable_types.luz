@@ -1,0 +1,62 @@
+# 22 - Nullable Types
+# T? marks a variable or return type as possibly null.
+# Null-coalescing operator ?? returns a fallback when the left side is null.
+
+# A nullable variable can hold a value or null
+username: string? = null
+write($"username = {username}")
+
+username = "Alice"
+write($"username = {username}")
+
+write("")
+
+# Functions that may return null use T? as return type
+function find_index(lst: list, target: int) -> int? {
+    for i = 0 to lst.len() - 1 {
+        if lst[i] == target { return i }
+    }
+    return null
+}
+
+numbers: list[int] = [10, 20, 30, 40, 50]
+idx: int? = find_index(numbers, 30)
+write($"Index of 30: {idx}")    # 2
+
+missing: int? = find_index(numbers, 99)
+write($"Index of 99: {missing}")    # null
+
+write("")
+
+# Null-coalescing operator ?? — use a default when null
+function get_display_name(name: string?) -> string {
+    return name ?? "Anonymous"
+}
+
+write(get_display_name("Bob"))    # Bob
+write(get_display_name(null))     # Anonymous
+
+write("")
+
+# Nullable in a loop — skip null entries
+entries: list = [1, null, 3, null, 5]
+write("Non-null entries:")
+for entry in entries {
+    if entry != null {
+        write($"  {entry}")
+    }
+}
+
+write("")
+
+# Optional chaining pattern — check before use
+function process(value: int?) {
+    if value == null {
+        write("No value provided")
+        return
+    }
+    write($"Processing: {value * 2}")
+}
+
+process(21)
+process(null)

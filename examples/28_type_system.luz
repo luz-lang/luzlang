@@ -1,0 +1,74 @@
+# 28 - Type System Showcase
+# Static type annotations, type inference, const, and typeof/instanceof.
+
+write("=== Typed variables ===")
+name: string  = "Luz"
+version: int  = 1
+pi: float     = 3.14159
+active: bool  = true
+nothing: int? = null
+
+write($"name    : {name}    ({typeof(name)})")
+write($"version : {version}   ({typeof(version)})")
+write($"pi      : {pi} ({typeof(pi)})")
+write($"active  : {active}   ({typeof(active)})")
+write($"nothing : {nothing}  ({typeof(nothing)})")
+
+write("")
+write("=== const ===")
+const MAX_SIZE: int   = 1024
+const APP_NAME: string = "MyApp"
+const TAX_RATE: float  = 0.21
+
+write($"{APP_NAME}: max={MAX_SIZE}, tax={TAX_RATE}")
+
+write("")
+write("=== Generic collection types ===")
+ids: list[int]            = [1, 2, 3, 4, 5]
+labels: list[string]      = ["a", "b", "c"]
+prices: dict[string, float] = {"apple": 1.5, "banana": 0.8}
+
+write($"ids    : {ids}")
+write($"labels : {labels}")
+write($"prices : {prices}")
+
+write("")
+write("=== Type enforcement ===")
+attempt {
+    bad: int = "not a number"
+} rescue (e) {
+    write($"type error: {e}")
+}
+
+attempt {
+    bad2: list[int] = [1, 2, "three"]
+} rescue (e) {
+    write($"list type error: {e}")
+}
+
+write("")
+write("=== typeof / instanceof ===")
+class Animal {
+    function init(self, name: string) { self.name = name }
+}
+class Dog extends Animal {
+    function init(self, name: string) { super.init(name) }
+    function speak(self) { write($"{self.name} says: Woof!") }
+}
+
+dog: Dog = Dog("Rex")
+dog.speak()
+write($"typeof(dog)             = {typeof(dog)}")
+write($"instanceof(dog, Dog)    = {instanceof(dog, Dog)}")
+write($"instanceof(dog, Animal) = {instanceof(dog, Animal)}")
+
+write("")
+write("=== Nullable coalescing ===")
+function safe_get(lst: list, idx: int) -> int? {
+    if idx < 0 or idx >= lst.len() { return null }
+    return lst[idx]
+}
+
+data: list[int] = [10, 20, 30]
+write(safe_get(data, 1) ?? -1)   # 20
+write(safe_get(data, 9) ?? -1)   # -1

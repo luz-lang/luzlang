@@ -1,0 +1,68 @@
+# 27 - Advanced Functions
+# Default parameters, variadic (...args), named (keyword) arguments.
+
+write("=== Default parameters ===")
+
+function greet(name: string, greeting: string = "Hello") -> string {
+    return $"{greeting}, {name}!"
+}
+
+write(greet("Alice"))               # Hello, Alice!
+write(greet("Bob", "Hi"))           # Hi, Bob!
+write(greet("Carol", "Howdy"))      # Howdy, Carol!
+
+write("")
+
+function power(base: float, exp: float = 2.0) -> float {
+    return base ** exp
+}
+
+write($"power(5)     = {power(5.0)}")       # 25.0
+write($"power(2, 10) = {power(2.0, 10.0)}")   # 1024.0
+
+write("")
+write("=== Variadic (...args) ===")
+
+function total(...nums) -> float {
+    acc: float = 0.0
+    for n in nums { acc = acc + n }
+    return acc
+}
+
+write(total(1, 2, 3))           # 6
+write(total(10, 20, 30, 40))    # 100
+write(total())                  # 0
+
+write("")
+
+function print_all(prefix: string, ...items) {
+    for item in items {
+        write($"{prefix}: {item}")
+    }
+}
+
+print_all("item", "apple", "banana", "cherry")
+
+write("")
+write("=== Named (keyword) arguments ===")
+
+function create_user(name: string, age: int, role: string = "user") -> string {
+    return $"{name} (age {age}, role: {role})"
+}
+
+write(create_user("Alice", 30))
+write(create_user("Bob", age: 25, role: "admin"))
+write(create_user(name: "Carol", age: 28))
+
+write("")
+write("=== Combining all three ===")
+
+function log(level: string = "INFO", ...messages) {
+    for msg in messages {
+        write($"[{level}] {msg}")
+    }
+}
+
+log("ERROR", "disk full", "retrying")
+log()                                  # no messages — empty variadic
+log("WARN", "cache miss")

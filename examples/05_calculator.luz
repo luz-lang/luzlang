@@ -1,26 +1,27 @@
-# Interactive Calculator
-# Supports +, -, *, /, %, **
-# Type "exit" as the first number to quit.
+# 05 - Interactive Calculator
+# Supports +, -, *, /, %, **. Type "exit" to quit.
 
 write("=== Luz Calculator ===")
 write("Supported operators: + - * / % **")
 write("Type \"exit\" to quit.\n")
 
-running = true
+running: bool = true
 
 while running {
-    first = listen("First number: ")
+    first_str: string = listen("First number: ")
 
-    if first == "exit" {
+    if first_str == "exit" {
         running = false
         continue
     }
 
-    op = listen("Operator: ")
-    second = listen("Second number: ")
+    op: string     = listen("Operator: ")
+    second_str: string = listen("Second number: ")
 
     attempt {
-        result = 0
+        first: float  = to_float(first_str)
+        second: float = to_float(second_str)
+        result: float = 0.0
 
         if op == "+" {
             result = first + second
@@ -37,13 +38,13 @@ while running {
         } elif op == "**" {
             result = first ** second
         } else {
-            alert "Unknown operator: " + op
+            alert $"Unknown operator: {op}"
         }
 
-        write("= " + to_str(result) + "\n")
+        write($"= {result}\n")
 
     } rescue (e) {
-        write("Error: " + e + "\n")
+        write($"Error: {e}\n")
     }
 }
 

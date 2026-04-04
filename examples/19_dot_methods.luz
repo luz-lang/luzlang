@@ -1,45 +1,71 @@
-# 19_dot_methods.luz
+# 19 - Dot Methods
 # String and list dot method syntax.
 
 # ── String methods ────────────────────────────────────────────────────────────
 
-greeting = "  Hello, World!  "
+greeting: string = "  Hello, World!  "
 
-write(greeting.trim())                      # Hello, World!
-write(greeting.trim().lowercase())          # hello, world!
-write(greeting.trim().uppercase())          # HELLO, WORLD!
-write("hello world".swap("world", "luz"))   # hello luz
-write("one,two,three".split(","))           # ["one", "two", "three"]
+write(greeting.trim())                        # Hello, World!
+write(greeting.trim().lowercase())            # hello, world!
+write(greeting.trim().uppercase())            # HELLO, WORLD!
+write("hello world".swap("world", "luz"))     # hello luz
+write("one,two,three".split(","))             # ["one", "two", "three"]
+
+write($"len: {greeting.trim().len()}")        # 13
 
 # Build a slug from a title
-title = "  My Luz Program  "
-slug  = title.trim().lowercase().swap(" ", "-")
+title: string = "  My Luz Program  "
+slug: string  = title.trim().lowercase().swap(" ", "-")
 write(slug)   # my-luz-program
+
+write("")
 
 # ── List methods ──────────────────────────────────────────────────────────────
 
-nums = [3, 1, 4, 1, 5, 9]
+nums: list[int] = [3, 1, 4, 1, 5, 9]
 
-write(nums.len())            # 6
-write(nums.contains(4))      # true
-write(nums.contains(7))      # false
+write($"len:        {nums.len()}")          # 6
+write($"contains 4: {nums.contains(4)}")   # true
+write($"contains 7: {nums.contains(7)}")   # false
 
 nums.append(2)
-write(nums)                  # [3, 1, 4, 1, 5, 9, 2]
+write(nums)                                # [3, 1, 4, 1, 5, 9, 2]
 
-last = nums.pop()
-write($"popped: {last}")     # popped: 2
-write(nums)                  # [3, 1, 4, 1, 5, 9]
+last: int = nums.pop()
+write($"popped: {last}")                   # 2
+write(nums)                                # [3, 1, 4, 1, 5, 9]
 
-words = ["luz", "is", "fast"]
-write(words.join(" "))       # luz is fast
-write(words.join(", "))      # luz, is, fast
+nums.sort()
+write("sorted:", nums)                     # [1, 1, 3, 4, 5, 9]
+nums.reverse()
+write("reversed:", nums)                   # [9, 5, 4, 3, 1, 1]
+
+words: list[string] = ["luz", "is", "fast"]
+write(words.join(" "))                     # luz is fast
+write(words.join(", "))                    # luz, is, fast
+
+write("")
+
+# ── Dict dot methods ──────────────────────────────────────────────────────────
+
+scores: dict[string, int] = {"alice": 90, "bob": 75, "carol": 88}
+write("keys:  ", scores.keys())
+write("values:", scores.values())
+write($"len:     {scores.len()}")
+
+alice_key: string = "alice"
+write($"contains alice: {scores.contains(alice_key)}")
+
+scores.remove("bob")
+write("after remove(bob):", scores)
+
+write("")
 
 # ── Combining both ────────────────────────────────────────────────────────────
 
-csv = "alice,bob,charlie,diana"
-names = csv.split(",")
+csv: string = "alice,bob,charlie,diana"
+names: list[string] = csv.split(",")
 write($"Found {names.len()} names")
 
-upper_names = [n.uppercase() for n in names]
+upper_names: list[string] = [n.uppercase() for n in names]
 write(upper_names.join(" | "))   # ALICE | BOB | CHARLIE | DIANA

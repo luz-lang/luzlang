@@ -1,55 +1,55 @@
-# String Operations
-# Demonstrates all string built-in functions.
+# 06 - String Operations
+# Demonstrates all string built-in functions and dot methods.
 
-sentence = "  The quick brown fox jumps over the lazy dog  "
+sentence: string = "  The quick brown fox jumps over the lazy dog  "
 
 write("=== Basic operations ===")
-write("Original : \"" + sentence + "\"")
-write("Trimmed  :", trim(sentence))
-write("Uppercase:", uppercase(trim(sentence)))
-write("Lowercase:", lowercase(trim(sentence)))
+write("Original :", sentence)
+write("Trimmed  :", sentence.trim())
+write("Uppercase:", sentence.trim().uppercase())
+write("Lowercase:", sentence.trim().lowercase())
 
 write("")
 write("=== Search ===")
-clean = trim(sentence)
-write("Contains \"fox\" :", contains(clean, "fox"))
-write("Contains \"cat\" :", contains(clean, "cat"))
-write("Begins with \"The\" :", begins(clean, "The"))
-write("Ends with \"dog\"   :", ends(clean, "dog"))
-write("Index of \"fox\"    :", find(clean, "fox"))
-write("Index of \"cat\"    :", find(clean, "cat"))
+clean: string = sentence.trim()
+write("Contains 'fox' :", contains(clean, "fox"))
+write("Contains 'cat' :", contains(clean, "cat"))
+write("Begins with 'The' :", begins(clean, "The"))
+write("Ends with 'dog'   :", ends(clean, "dog"))
+write("Index of 'fox'    :", find(clean, "fox"))
+write("Index of 'cat'    :", find(clean, "cat"))
 
 write("")
 write("=== Modification ===")
 write("Original  :", clean)
-write("After swap:", swap(clean, "fox", "cat"))
+write("After swap:", clean.swap("fox", "cat"))
 
 write("")
 write("=== Split and join ===")
-words = split(clean, " ")
+words: list[string] = clean.split(" ")
 write("Words  :", words)
-write("Count  :", len(words))
-write("Joined :", join(" | ", words))
+write($"Count  : {words.len()}")
+write("Joined :", words.join(" | "))
 
 write("")
 write("=== Counting ===")
-pangram = "how much wood would a woodchuck chuck"
+pangram: string = "how much wood would a woodchuck chuck"
 write("Sentence   :", pangram)
-write("Occurrences of \"wood\" :", count(pangram, "wood"))
-write("Occurrences of \"o\"    :", count(pangram, "o"))
+write("Occurrences of 'wood' :", count(pangram, "wood"))
+write("Occurrences of 'o'    :", count(pangram, "o"))
 
 write("")
-write("=== Indexing ===")
-word = "Luz"
+write("=== Indexing and slices ===")
+word: string  = "Luz"
+greet: string = "Hello, World!"
 write("Word       :", word)
-write("First char :", word[0])
-write("Last char  :", word[-1])
+write($"First char : {word[0]}")
+write($"Last char  : {word[-1]}")
+write($"Sliced     : {greet[0:5]}")
 
-i = 0
-result = ""
-while i < len(word) {
-    result = result + word[i] + "-"
-    i = i + 1
+result: string = ""
+for ch in word {
+    result = result + ch + "-"
 }
 write("Spelled out:", result)
 

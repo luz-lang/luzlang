@@ -1,5 +1,5 @@
-# 14_math_builtins.luz
-# Demonstration of all math built-in functions.
+# 14 - Math Built-ins
+# All math built-in functions: abs, sqrt, floor, ceil, round, clamp, max, min, sign, odd, even.
 
 write("=== abs ===")
 write(abs(-42))
@@ -7,10 +7,10 @@ write(abs(7))
 
 write("")
 write("=== sqrt / floor / ceil / round ===")
-write($"sqrt(2)        = {sqrt(2)}")
-write($"floor(3.9)     = {floor(3.9)}")
-write($"ceil(3.1)      = {ceil(3.1)}")
-write($"round(3.14159, 3) = {round(3.14159, 3)}")
+write($"sqrt(2)              = {sqrt(2)}")
+write($"floor(3.9)           = {floor(3.9)}")
+write($"ceil(3.1)            = {ceil(3.1)}")
+write($"round(3.14159, 3)    = {round(3.14159, 3)}")
 
 write("")
 write("=== clamp ===")
@@ -19,12 +19,17 @@ write($"clamp(-5, 0, 10) = {clamp(-5, 0, 10)}")
 write($"clamp(5,  0, 10) = {clamp(5,  0, 10)}")
 
 write("")
-write("=== max / min ===")
-write($"max(3, 8, 1, 9, 2)   = {max(3, 8, 1, 9, 2)}")
-write($"min(3, 8, 1, 9, 2)   = {min(3, 8, 1, 9, 2)}")
-nums = [7, 2, 5, 1, 9, 3]
-write($"max of list {nums} = {max(nums)}")
-write($"min of list {nums} = {min(nums)}")
+write("=== max / min / sum on lists ===")
+nums: list[int] = [7, 2, 5, 1, 9, 3]
+write($"list: {nums}")
+write($"max  = {max(nums)}")
+write($"min  = {min(nums)}")
+write($"sum  = {sum(nums)}")
+
+write("")
+write("=== max / min with multiple args ===")
+write($"max(3, 8, 1, 9, 2) = {max(3, 8, 1, 9, 2)}")
+write($"min(3, 8, 1, 9, 2) = {min(3, 8, 1, 9, 2)}")
 
 write("")
 write("=== sign / odd / even ===")
@@ -38,3 +43,8 @@ for n in [1, 2, 3, 4, 5] {
         write($"{n} is even")
     }
 }
+
+write("")
+write("=== pow ===")
+write($"2 ** 10 = {2 ** 10}")
+write($"3 ** 3  = {3 ** 3}")

@@ -1,13 +1,13 @@
-# 12_inheritance.luz
-# Inheritance, method overriding, and super.
+# 12 - Inheritance
+# Inheritance, method overriding, super, and instanceof.
 
 class Shape {
-    function init(self, color) {
+    function init(self, color: string) {
         self.color = color
     }
 
-    function area(self) {
-        return 0
+    function area(self) -> float {
+        return 0.0
     }
 
     function describe(self) {
@@ -16,38 +16,38 @@ class Shape {
 }
 
 class Circle extends Shape {
-    function init(self, color, radius) {
+    function init(self, color: string, radius: float) {
         super.init(color)
         self.radius = radius
     }
 
-    function area(self) {
+    function area(self) -> float {
         return round(self.radius * self.radius * 3.14159, 2)
     }
 }
 
 class Rectangle extends Shape {
-    function init(self, color, width, height) {
+    function init(self, color: string, width: float, height: float) {
         super.init(color)
         self.width  = width
         self.height = height
     }
 
-    function area(self) {
+    function area(self) -> float {
         return self.width * self.height
     }
 }
 
 class Square extends Rectangle {
-    function init(self, color, side) {
+    function init(self, color: string, side: float) {
         super.init(color, side, side)
     }
 }
 
-shapes = [
-    Circle("red", 5),
-    Rectangle("blue", 4, 6),
-    Square("green", 3),
+shapes: list = [
+    Circle("red", 5.0),
+    Rectangle("blue", 4.0, 6.0),
+    Square("green", 3.0),
 ]
 
 for shape in shapes {
@@ -55,7 +55,7 @@ for shape in shapes {
 }
 
 write("")
-write($"instanceof checks:")
-write($"  Circle is a Shape:    {instanceof(shapes[0], Shape)}")
+write("instanceof checks:")
+write($"  Circle is a Shape:     {instanceof(shapes[0], Shape)}")
 write($"  Square is a Rectangle: {instanceof(shapes[2], Rectangle)}")
 write($"  Circle is a Rectangle: {instanceof(shapes[0], Rectangle)}")

@@ -1,38 +1,39 @@
-# Number Guessing Game
-# The player has 7 attempts to guess a secret number between 1 and 100.
-# Change the value of `secret` to play with a different number.
+# 07 - Number Guessing Game
+# Guess a secret number between 1 and 100 in 7 attempts.
 
-secret = 42
-max_attempts = 7
-attempts = 0
-won = false
+const SECRET: int      = 42
+const MAX_ATTEMPTS: int = 7
+
+attempts: int  = 0
+won: bool      = false
 
 write("=== Guessing Game ===")
 write("I'm thinking of a number between 1 and 100.")
-write("You have " + to_str(max_attempts) + " attempts.\n")
+write($"You have {MAX_ATTEMPTS} attempts.\n")
 
-while attempts < max_attempts {
-    remaining = max_attempts - attempts
-    guess = listen("Attempt " + to_str(attempts + 1) + "/" + to_str(max_attempts) + " → ")
+while attempts < MAX_ATTEMPTS {
+    remaining: int  = MAX_ATTEMPTS - attempts
+    guess_str: string = listen($"Attempt {attempts + 1}/{MAX_ATTEMPTS} → ")
+    guess: int = to_int(guess_str)
     attempts = attempts + 1
 
-    if guess == secret {
+    if guess == SECRET {
         won = true
         break
-    } elif guess < secret {
+    } elif guess < SECRET {
         if remaining - 1 > 0 {
-            write("Too low!  (" + to_str(remaining - 1) + " attempts left)\n")
+            write($"Too low!  ({remaining - 1} attempts left)\n")
         }
     } else {
         if remaining - 1 > 0 {
-            write("Too high! (" + to_str(remaining - 1) + " attempts left)\n")
+            write($"Too high! ({remaining - 1} attempts left)\n")
         }
     }
 }
 
 write("")
 if won {
-    write("You got it in " + to_str(attempts) + " attempt(s)!")
+    write($"You got it in {attempts} attempt(s)!")
     if attempts == 1 {
         write("Incredible! First try!")
     } elif attempts <= 3 {
@@ -41,6 +42,6 @@ if won {
         write("Well done!")
     }
 } else {
-    write("Game over. The number was " + to_str(secret) + ".")
+    write($"Game over. The number was {SECRET}.")
     write("Better luck next time!")
 }

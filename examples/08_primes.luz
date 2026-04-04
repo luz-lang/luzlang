@@ -1,36 +1,30 @@
-# Prime Numbers
-# Find all primes up to a limit using trial division,
-# then demonstrate a few number theory properties.
+# 08 - Prime Numbers
+# Trial division, twin primes, and next-prime lookup.
 
-function is_prime(n) {
+function is_prime(n: int) -> bool {
     if n < 2 { return false }
     if n == 2 { return true }
     if n % 2 == 0 { return false }
-
-    divisor = 3
+    divisor: int = 3
     while divisor * divisor <= n {
-        if n % divisor == 0 {
-            return false
-        }
+        if n % divisor == 0 { return false }
         divisor = divisor + 2
     }
     return true
 }
 
-function primes_up_to(limit) {
-    result = []
-    candidate = 2
+function primes_up_to(limit: int) -> list {
+    result: list[int] = []
+    candidate: int    = 2
     while candidate <= limit {
-        if is_prime(candidate) {
-            append(result, candidate)
-        }
+        if is_prime(candidate) { result.append(candidate) }
         candidate = candidate + 1
     }
     return result
 }
 
-function next_prime(n) {
-    candidate = n + 1
+function next_prime(n: int) -> int {
+    candidate: int = n + 1
     while not is_prime(candidate) {
         candidate = candidate + 1
     }
@@ -38,32 +32,27 @@ function next_prime(n) {
 }
 
 # All primes up to 100
-limit = 100
-primes = primes_up_to(limit)
-write("Primes up to " + to_str(limit) + ":")
+const LIMIT: int = 100
+primes: list[int] = primes_up_to(LIMIT)
+write($"Primes up to {LIMIT}:")
 write(primes)
-write("Total count:", len(primes))
+write($"Total count: {primes.len()}")
 
 write("")
 
 # Twin primes (pairs that differ by 2)
 write("Twin prime pairs up to 100:")
-idx = 0
-while idx < len(primes) - 1 {
-    if primes[idx + 1] - primes[idx] == 2 {
-        write("(" + to_str(primes[idx]) + ", " + to_str(primes[idx + 1]) + ")")
+for i = 0 to primes.len() - 2 {
+    if primes[i + 1] - primes[i] == 2 {
+        write($"({primes[i]}, {primes[i + 1]})")
     }
-    idx = idx + 1
 }
 
 write("")
 
 # Next prime after some numbers
-checkpoints = [10, 20, 50, 100]
+checkpoints: list[int] = [10, 20, 50, 100]
 write("Next prime after some numbers:")
-idx = 0
-while idx < len(checkpoints) {
-    n = checkpoints[idx]
-    write("After " + to_str(n) + " -> " + to_str(next_prime(n)))
-    idx = idx + 1
+for n in checkpoints {
+    write($"After {n} -> {next_prime(n)}")
 }

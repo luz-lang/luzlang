@@ -1,28 +1,30 @@
-# 21_algorithms.luz
-# Classic algorithms: quicksort, binary search, BFS, and GCD.
+# 21 - Classic Algorithms
+# Quicksort, binary search, GCD/LCM, and BFS.
 
 # ── Quicksort ─────────────────────────────────────────────────────────────────
 
-function quicksort(lst) {
+function quicksort(lst: list) -> list {
     if lst.len() <= 1 { return lst }
     pivot = lst[0]
-    left  = [x for x in lst if x < pivot]
-    mid   = [x for x in lst if x == pivot]
-    right = [x for x in lst if x > pivot]
+    left:  list = [x for x in lst if x < pivot]
+    mid:   list = [x for x in lst if x == pivot]
+    right: list = [x for x in lst if x > pivot]
     return quicksort(left) + mid + quicksort(right)
 }
 
-unsorted = [3, 6, 8, 10, 1, 2, 1, 9, 4, 7, 5]
-write(quicksort(unsorted))   # [1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+unsorted: list[int] = [3, 6, 8, 10, 1, 2, 1, 9, 4, 7, 5]
+write("Unsorted:", unsorted)
+write("Sorted:  ", quicksort(unsorted))   # [1, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
+write("")
 
 # ── Binary search ─────────────────────────────────────────────────────────────
 
-function binary_search(lst, target) {
-    lo = 0
-    hi = lst.len() - 1
+function binary_search(lst: list, target: int) -> int {
+    lo: int = 0
+    hi: int = lst.len() - 1
     while lo <= hi {
-        mid = (lo + hi) / 2
-        mid = to_int(mid)
+        mid: int = to_int((lo + hi) / 2)
         if lst[mid] == target { return mid }
         if lst[mid] < target  { lo = mid + 1 }
         else                  { hi = mid - 1 }
@@ -30,29 +32,33 @@ function binary_search(lst, target) {
     return -1
 }
 
-sorted_list = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
-write(binary_search(sorted_list, 7))    # 3
-write(binary_search(sorted_list, 1))    # 0
-write(binary_search(sorted_list, 19))   # 9
-write(binary_search(sorted_list, 6))    # -1
+sorted_list: list[int] = [1, 3, 5, 7, 9, 11, 13, 15, 17, 19]
+write($"binary_search(7)  = {binary_search(sorted_list, 7)}")    # 3
+write($"binary_search(1)  = {binary_search(sorted_list, 1)}")    # 0
+write($"binary_search(19) = {binary_search(sorted_list, 19)}")   # 9
+write($"binary_search(6)  = {binary_search(sorted_list, 6)}")    # -1
+
+write("")
 
 # ── GCD and LCM ───────────────────────────────────────────────────────────────
 
-function gcd(a, b) {
+function gcd(a: int, b: int) -> int {
     if b == 0 { return a }
     return gcd(b, a % b)
 }
 
-function lcm(a, b) {
+function lcm(a: int, b: int) -> int {
     return to_int((a * b) / gcd(a, b))
 }
 
 write($"gcd(48, 18) = {gcd(48, 18)}")    # 6
 write($"lcm(12, 18) = {lcm(12, 18)}")    # 36
 
+write("")
+
 # ── BFS on a graph ────────────────────────────────────────────────────────────
 
-graph = {
+graph: dict[string, list] = {
     "a": ["b", "c"],
     "b": ["a", "d", "e"],
     "c": ["a", "f"],
@@ -61,11 +67,11 @@ graph = {
     "f": ["c", "e"]
 }
 
-function bfs(g, start) {
-    visited = []
-    queue   = [start]
+function bfs(g: dict, start: string) -> list {
+    visited: list[string] = []
+    queue:   list[string] = [start]
     while queue.len() > 0 {
-        node = queue.pop(0)
+        node: string = queue.pop(0)
         if not node in visited {
             visited.append(node)
             for neighbor in g[node] {
@@ -78,7 +84,7 @@ function bfs(g, start) {
     return visited
 }
 
-write("BFS from a:")
-write(bfs(graph, "a"))
-write("BFS from d:")
-write(bfs(graph, "d"))
+start_a: string = "a"
+start_d: string = "d"
+write($"BFS from a: {bfs(graph, start_a)}")
+write($"BFS from d: {bfs(graph, start_d)}")

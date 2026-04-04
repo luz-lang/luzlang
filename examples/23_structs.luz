@@ -1,0 +1,72 @@
+# 23 - Structs
+# struct defines a lightweight, typed, value-type data container.
+# Fields must have types; default values are optional.
+
+struct Point {
+    x: float,
+    y: float
+}
+
+struct Color {
+    r: int,
+    g: int,
+    b: int
+}
+
+struct Rect {
+    x:      float,
+    y:      float,
+    width:  float,
+    height: float
+}
+
+# Positional construction
+p1: Point = Point(3.0, 4.0)
+write($"p1.x = {p1.x}, p1.y = {p1.y}")
+
+# Keyword construction
+p2: Point = Point(x: 0.0, y: 1.0)
+write($"p2 = ({p2.x}, {p2.y})")
+
+write("")
+
+# Struct with default values
+struct Config {
+    debug:   bool  = false,
+    max_retries: int = 3,
+    timeout: float = 30.0
+}
+
+default_cfg: Config = Config()
+write($"debug={default_cfg.debug}, retries={default_cfg.max_retries}, timeout={default_cfg.timeout}")
+
+custom_cfg: Config = Config(debug: true, timeout: 10.0)
+write($"debug={custom_cfg.debug}, retries={custom_cfg.max_retries}, timeout={custom_cfg.timeout}")
+
+write("")
+
+# Using structs in functions
+function distance(a: Point, b: Point) -> float {
+    dx: float = a.x - b.x
+    dy: float = a.y - b.y
+    return sqrt(dx * dx + dy * dy)
+}
+
+origin: Point = Point(0.0, 0.0)
+p3: Point     = Point(3.0, 4.0)
+write($"distance from origin to (3,4) = {distance(origin, p3)}")   # 5.0
+
+write("")
+
+# Structs in a list
+palette: list = [
+    Color(255, 0,   0),
+    Color(0,   255, 0),
+    Color(0,   0,   255),
+]
+
+names: list[string] = ["red", "green", "blue"]
+for i = 0 to palette.len() - 1 {
+    c: Color = palette[i]
+    write($"{names[i]}: rgb({c.r}, {c.g}, {c.b})")
+}

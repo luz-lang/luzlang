@@ -1,50 +1,63 @@
-# 17_lambdas.luz
-# Lambdas, composition, and first-class functions.
+# 17 - Lambdas
+# Short and long lambda forms, composition, and dispatch tables.
 
 # Short form: fn(x) => expr
-square = fn(x) => x * x
-negate = fn(x) => -x
-is_even = fn(x) => x % 2 == 0
+square:  any = fn(x) => x * x
+negate:  any = fn(x) => -x
+is_even: any = fn(x) => x % 2 == 0
 
 write(square(5))     # 25
 write(negate(7))     # -7
 write(is_even(4))    # true
 
+write("")
+
 # Long form: fn(x) { body }
-clamp = fn(val, lo, hi) {
+clamp_fn: any = fn(val, lo, hi) {
     if val < lo { return lo }
     if val > hi { return hi }
     return val
 }
 
-write(clamp(5, 0, 10))    # 5
-write(clamp(-3, 0, 10))   # 0
-write(clamp(15, 0, 10))   # 10
+write(clamp_fn(5, 0, 10))    # 5
+write(clamp_fn(-3, 0, 10))   # 0
+write(clamp_fn(15, 0, 10))   # 10
+
+write("")
 
 # Function composition
 function compose(f, g) {
     return fn(x) => f(g(x))
 }
 
-add1       = fn(x) => x + 1
-double     = fn(x) => x * 2
-double_add = compose(add1, double)
+add1:       any = fn(x) => x + 1
+double:     any = fn(x) => x * 2
+double_add: any = compose(add1, double)
 
 write(double_add(5))   # 11  (5*2 + 1)
 
-# Lambdas stored in a dict as a dispatch table
-ops = {
+write("")
+
+# List comprehension using lambdas
+nums: list[int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+squared_evens: list = [square(x) for x in nums if is_even(x)]
+write("Squared evens:", squared_evens)   # [4, 16, 36, 64, 100]
+
+write("")
+
+# Dispatch table — lambdas stored in a dict
+ops: dict[string, any] = {
     "add": fn(a, b) => a + b,
     "sub": fn(a, b) => a - b,
     "mul": fn(a, b) => a * b,
     "pow": fn(a, b) => a ** b
 }
 
-pairs = [["add", 3, 4], ["sub", 10, 3], ["mul", 6, 7], ["pow", 2, 8]]
+pairs: list = [["add", 3, 4], ["sub", 10, 3], ["mul", 6, 7], ["pow", 2, 8]]
 for pair in pairs {
-    op  = pair[0]
-    a   = pair[1]
-    b   = pair[2]
+    op: string = pair[0]
+    a: int     = pair[1]
+    b: int     = pair[2]
     fn_op = ops[op]
     write($"{op}({a}, {b}) = {fn_op(a, b)}")
 }

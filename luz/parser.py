@@ -675,7 +675,7 @@ class Parser:
 
         # Post-expression check for index assignment: lista[0] = 5
         if isinstance(node, IndexAccessNode) and self.current_token.type == TokenType.ASSIGN:
-            line = node.line; col = getattr(node, 'col', None)
+            line = getattr(node, 'line', None); col = getattr(node, 'col', None)
             self.advance()  # Consume '='
             value = self.expr()
             assign_node = IndexAssignNode(node.base_node, node.index_node, value)
