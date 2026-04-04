@@ -37,12 +37,7 @@ jobs:
             /DAppVersion=$version `
             installer\luz_installer.iss
 
-      - name: Rename installer
-        run: |
-          $version = "${{ github.ref_name }}"
-          Rename-Item installer_output\luz-setup.exe "luz-$version-windows-setup.exe"
-
       - name: Upload Windows installer to release
         uses: softprops/action-gh-release@v2
         with:
-          files: installer_output/luz-${{ github.ref_name }}-windows-setup.exe
+          files: installer_output/luz-*-windows-x64.exe
