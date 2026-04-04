@@ -28,6 +28,8 @@ luz/c_lexer/lexer_test.exe
 luz/c_lexer/lexer_test
 luz/c_lexer/*.dll
 luz/c_lexer/*.so
+luz/runtime/*.o
+luz/runtime/*.a
 tests/crashes/
 
 .claude/
