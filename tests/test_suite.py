@@ -1237,6 +1237,60 @@ class TestListDotSortReverse:
         assert interp.global_env.lookup("xs") == []
 
 
+class TestDefiniteAssignment:
+    """Type checker reports UninitializedFault for variables that may be used before assignment."""
+
+    @staticmethod
+    def tc(code):
+        from luz.typechecker import TypeChecker
+        tokens = Lexer(code).get_tokens()
+        ast = Parser(tokens).parse()
+        return TypeChecker().check(ast)
+
+    def _uninit_errors(self, code):
+        return [e for e in self.tc(code) if e.fault_kind == 'UninitializedFault']
+
+    def test_if_without_else_flags_var(self):
+        code = 'function foo(cond: bool) { if cond { x = 5 } return x }'
+        assert self._uninit_errors(code)
+
+    def test_if_with_else_no_error(self):
+        code = 'function foo(cond: bool) { if cond { x = 5 } else { x = 10 } return x }'
+        assert not self._uninit_errors(code)
+
+    def test_unconditional_assignment_no_error(self):
+        code = 'function foo() { x = 5\nreturn x }'
+        assert not self._uninit_errors(code)
+
+    def test_while_loop_flags_var(self):
+        code = 'function foo() { while false { y = 1 } return y }'
+        assert self._uninit_errors(code)
+
+    def test_global_var_no_error(self):
+        code = 'x = 10\nfunction foo() { return x }'
+        assert not self._uninit_errors(code)
+
+    def test_function_param_no_error(self):
+        code = 'function foo(n: int) { return n }'
+        assert not self._uninit_errors(code)
+
+    def test_for_loop_var_available_inside(self):
+        code = 'function foo() { for i = 0 to 5 { write(i) } }'
+        assert not self._uninit_errors(code)
+
+    def test_for_loop_body_var_not_guaranteed_after(self):
+        code = 'function foo() { for i = 0 to 5 { z = i } return z }'
+        assert self._uninit_errors(code)
+
+    def test_if_elif_else_all_branches_no_error(self):
+        code = 'function foo(n: int) { if n > 0 { x = 1 } elif n < 0 { x = -1 } else { x = 0 } return x }'
+        assert not self._uninit_errors(code)
+
+    def test_if_elif_no_else_flags_var(self):
+        code = 'function foo(n: int) { if n > 0 { x = 1 } elif n < 0 { x = -1 } return x }'
+        assert self._uninit_errors(code)
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

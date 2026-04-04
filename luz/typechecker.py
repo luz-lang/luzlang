@@ -268,6 +268,10 @@ class TypeChecker:
         # Set to the class name while visiting its init method so that
         # visit_AttributeAssignNode can record self.<attr> types.
         self._collecting_attrs_for: str | None = None
+        # Definite assignment analysis: tracks names that are definitely
+        # initialized at the current point in the current function.
+        self._definite: set[str] = set()
+        self._definite_stack: list[set[str]] = []
         self._setup_builtins()
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -296,6 +300,15 @@ class TypeChecker:
         if token is not None:
             line, col = self._tok_loc(token)
         self.errors.append(TypeCheckError(message, line, col))
+
+    def _env_all_names(self, env: TypeEnv) -> set[str]:
+        """Collect all names defined anywhere in the given env chain."""
+        names: set[str] = set()
+        e: Optional[TypeEnv] = env
+        while e is not None:
+            names |= set(e._bindings.keys())
+            e = e.parent
+        return names
 
     def _report_unused(self, env: TypeEnv, *,
                        check_locals: bool = True, check_imports: bool = True):
@@ -349,6 +362,14 @@ class TypeChecker:
     def visit_VarAccessNode(self, node) -> str:
         name = node.token.value
         self.env.mark_used(name)
+        if (self._in_function_depth > 0
+                and name not in self._definite
+                and name != 'super'):
+            line, col = self._tok_loc(node.token)
+            self.errors.append(TypeCheckError(
+                f"Variable '{name}' may be used before being assigned",
+                line, col, fault_kind="UninitializedFault"
+            ))
         return self.env.lookup(name)
 
     def visit_VarAssignNode(self, node) -> str:
@@ -361,6 +382,7 @@ class TypeChecker:
             self.env.define(name, typ, token=node.var_name_token)
         else:
             self.env.update(name, typ)
+        self._definite.add(name)
         return typ
 
     def visit_ConstDefNode(self, node) -> str:
@@ -375,6 +397,7 @@ class TypeChecker:
         # Track if inside a function (consts at global level are module-level constants)
         tok = node.var_token if self._in_function_depth > 0 else None
         self.env.define_const(node.var_token.value, declared, token=tok)
+        self._definite.add(node.var_token.value)
         return declared
 
     def visit_TypedVarAssignNode(self, node) -> str:
@@ -391,6 +414,7 @@ class TypeChecker:
             self.env.define(node.var_token.value, declared, token=node.var_token)
         else:
             self.env.update(node.var_token.value, declared)
+        self._definite.add(node.var_token.value)
         return declared
 
     def visit_DestructureAssignNode(self, node) -> str:
@@ -400,6 +424,7 @@ class TypeChecker:
                 self.env.define(t.value, T.UNKNOWN, token=t)
             else:
                 self.env.update(t.value, T.UNKNOWN)
+            self._definite.add(t.value)
         return T.UNKNOWN
 
     def visit_DictDestructureAssignNode(self, node) -> str:
@@ -409,6 +434,7 @@ class TypeChecker:
                 self.env.define(t.value, T.UNKNOWN, token=t)
             else:
                 self.env.update(t.value, T.UNKNOWN)
+            self._definite.add(t.value)
         return T.UNKNOWN
 
     # ── Binary / Unary ops ────────────────────────────────────────────────────
@@ -514,6 +540,11 @@ class TypeChecker:
         for ptoken, ptype in zip(node.arg_tokens, param_types):
             child_env.define(ptoken.value, ptype, token=ptoken, is_param=True)
 
+        # Definite assignment: initialize with outer scope names + params
+        self._definite_stack.append(self._definite)
+        self._definite = (self._env_all_names(self.env)
+                          | {p.value for p in node.arg_tokens})
+
         saved_env, saved_ret = self.env, self._current_return_type
         self.env, self._current_return_type = child_env, return_type
         self._in_function_depth += 1
@@ -525,24 +556,32 @@ class TypeChecker:
         # Report unused params and locals defined directly in this function scope
         self._report_unused(child_env, check_locals=True, check_imports=True)
         self.env, self._current_return_type = saved_env, saved_ret
+        self._definite = self._definite_stack.pop()
         return T.FUNCTION
 
     def visit_LambdaNode(self, node) -> str:
         child_env = TypeEnv(self.env)
         for t in node.param_tokens:
             child_env.define(t.value, T.UNKNOWN, token=t, is_param=True)
+        self._definite_stack.append(self._definite)
+        self._definite = (self._env_all_names(self.env)
+                          | {t.value for t in node.param_tokens})
         saved = self.env; self.env = child_env
         self._in_function_depth += 1
         self.visit(node.expr_node)
         self._in_function_depth -= 1
         self._report_unused(child_env, check_locals=True, check_imports=True)
         self.env = saved
+        self._definite = self._definite_stack.pop()
         return T.FUNCTION
 
     def visit_AnonFuncNode(self, node) -> str:
         child_env = TypeEnv(self.env)
         for t in node.param_tokens:
             child_env.define(t.value, T.UNKNOWN, token=t, is_param=True)
+        self._definite_stack.append(self._definite)
+        self._definite = (self._env_all_names(self.env)
+                          | {t.value for t in node.param_tokens})
         saved = self.env; self.env = child_env
         self._in_function_depth += 1
         for stmt in node.block:
@@ -550,6 +589,7 @@ class TypeChecker:
         self._in_function_depth -= 1
         self._report_unused(child_env, check_locals=True, check_imports=True)
         self.env = saved
+        self._definite = self._definite_stack.pop()
         return T.FUNCTION
 
     def visit_ReturnNode(self, node) -> str:
@@ -612,27 +652,47 @@ class TypeChecker:
 
     def visit_IfNode(self, node) -> str:
         in_fn = self._in_function_depth > 0
+        definite_before = self._definite.copy()
+        branch_additions: list[set[str]] = []
+
         for condition, body in node.cases:
             self.visit(condition)
             child = TypeEnv(self.env)
             saved = self.env; self.env = child
+            self._definite = definite_before.copy()
             for stmt in body:
                 self.visit(stmt)
+            branch_additions.append(self._definite - definite_before)
             self._report_unused(child, check_locals=in_fn, check_imports=True)
             self.env = saved
+
+        has_else = bool(node.else_case)
         if node.else_case:
             child = TypeEnv(self.env)
             saved = self.env; self.env = child
+            self._definite = definite_before.copy()
             for stmt in node.else_case:
                 self.visit(stmt)
+            branch_additions.append(self._definite - definite_before)
             self._report_unused(child, check_locals=in_fn, check_imports=True)
             self.env = saved
+
+        # Restore and propagate only variables assigned in ALL branches
+        self._definite = definite_before
+        if has_else and branch_additions:
+            guaranteed = branch_additions[0].copy()
+            for s in branch_additions[1:]:
+                guaranteed &= s
+            self._definite |= guaranteed
         return T.UNKNOWN
 
     def visit_WhileNode(self, node) -> str:
         self.visit(node.condition_node)
+        saved_definite = self._definite.copy()
         for stmt in node.block:
             self.visit(stmt)
+        # Loop body does not guarantee assignments (may never execute)
+        self._definite = saved_definite
         return T.UNKNOWN
 
     def visit_ForNode(self, node) -> str:
@@ -645,8 +705,11 @@ class TypeChecker:
         child.define(node.var_name_token.value, T.INT,
                      token=node.var_name_token if in_fn else None)
         saved = self.env; self.env = child
+        saved_definite = self._definite.copy()
+        self._definite.add(node.var_name_token.value)  # loop var available inside body
         for stmt in node.block:
             self.visit(stmt)
+        self._definite = saved_definite  # loop body doesn't guarantee new assignments
         self._report_unused(child, check_locals=in_fn, check_imports=True)
         self.env = saved
         return T.UNKNOWN
@@ -658,8 +721,11 @@ class TypeChecker:
         child.define(node.var_name_token.value, T.UNKNOWN,
                      token=node.var_name_token if in_fn else None)
         saved = self.env; self.env = child
+        saved_definite = self._definite.copy()
+        self._definite.add(node.var_name_token.value)  # loop var available inside body
         for stmt in node.block:
             self.visit(stmt)
+        self._definite = saved_definite  # loop body doesn't guarantee new assignments
         self._report_unused(child, check_locals=in_fn, check_imports=True)
         self.env = saved
         return T.UNKNOWN
@@ -767,11 +833,18 @@ class TypeChecker:
         return T.UNKNOWN
 
     def visit_ListCompNode(self, node) -> str:
-        for _, iterable in node.clauses:
+        clause_var_names: list[str] = []
+        for var_tok, iterable in node.clauses:
             self.visit(iterable)
+            name = var_tok.value if hasattr(var_tok, 'value') else str(var_tok)
+            clause_var_names.append(name)
+            self._definite.add(name)
         self.visit(node.expr)
         if node.condition:
             self.visit(node.condition)
+        # Clause vars are only valid inside the comprehension
+        for name in clause_var_names:
+            self._definite.discard(name)
         return T.LIST
 
     # ── Imports ───────────────────────────────────────────────────────────────
