@@ -21,6 +21,15 @@
 #include <stdint.h>
 #include <setjmp.h>
 
+/* Cross-compiler noreturn annotation */
+#if defined(_MSC_VER)
+#  define LUZ_NORETURN __declspec(noreturn)
+#elif defined(__GNUC__) || defined(__clang__)
+#  define LUZ_NORETURN __attribute__((noreturn))
+#else
+#  define LUZ_NORETURN _Noreturn
+#endif
+
 /* ── Forward declarations ─────────────────────────────────────────────────── */
 
 typedef struct luz_string   luz_string_t;
@@ -221,7 +230,7 @@ void luz_exc_push(luz_exc_frame_t *frame);
 void luz_exc_pop(void);
 
 /* Raise an exception (calls longjmp if a frame is active, otherwise aborts) */
-void luz_raise(luz_value_t exc) __attribute__((noreturn));
+LUZ_NORETURN void luz_raise(luz_value_t exc);
 
 /* ── Builtin functions ────────────────────────────────────────────────────── */
 
@@ -281,6 +290,6 @@ luz_value_t luz_builtin_values(luz_value_t d);
 void        luz_builtin_remove(luz_value_t d, luz_value_t key);
 
 /* Alert (user-level exception) */
-void        luz_builtin_alert(luz_value_t msg) __attribute__((noreturn));
+LUZ_NORETURN void luz_builtin_alert(luz_value_t msg);
 
 #endif /* LUZ_RUNTIME_H */
