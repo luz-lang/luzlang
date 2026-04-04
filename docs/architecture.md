@@ -40,8 +40,8 @@ Consumes the token stream and builds an **Abstract Syntax Tree (AST)** using a *
 Operator precedence is enforced through a chain of parsing functions, each calling the next higher-precedence level:
 
 ```
-logical_or → logical_and → logical_not → comparison
-           → arithmetic → term → power → factor
+logical_or → logical_and → logical_not → comp_expr
+           → arith_expr → term → power → factor
 ```
 
 Each node type (`BinOpNode`, `IfNode`, `CallNode`, `ClassDefNode`, `StructDefNode`, etc.) is a plain Python class defined at the top of the file. Nodes hold references to their child nodes, forming a tree.

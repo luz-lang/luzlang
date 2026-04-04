@@ -58,7 +58,7 @@ write(path_dirname("/home/user/file.txt"))   # /home/user
 Returns the file extension including the dot.
 
 ```
-write(path_ext("archive.tar.gz"))   # archive.tar.gz
+write(path_ext("archive.tar.gz"))   # .tar.gz
 ```
 
 ### `path_exists(p)`

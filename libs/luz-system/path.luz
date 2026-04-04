@@ -44,7 +44,7 @@ function path_ext(p) {
     name = path_basename(p)
     idx = find(name, ".")
     if idx == -1 { return "" }
-    return name
+    return name[idx:]
 }
 
 # Check whether a path exists (file or directory)

@@ -2,14 +2,14 @@
   <h1>Luz Language</h1>
   <p>A lightweight, interpreted programming language designed to be simple, readable, and easy to learn.</p>
   <div class="luz-hero-btns">
-    <a id="download-btn" href="https://github.com/Elabsurdo984/luzlang/releases/latest" class="luz-btn-primary">Download</a>
+    <a id="download-btn" href="https://github.com/Elabsurdo984/luz-lang/releases/latest" class="luz-btn-primary">Download</a>
     <a href="getting-started/installation/" class="luz-btn-secondary">Get Started →</a>
   </div>
   <p style="margin-top:1.25rem;color:#555;font-size:0.85rem;" id="download-info">No Python required</p>
 </div>
 
 <script>
-fetch("https://api.github.com/repos/Elabsurdo984/luzlang/releases")
+fetch("https://api.github.com/repos/Elabsurdo984/luz-lang/releases")
   .then(r => r.json())
   .then(releases => {
     const isLinux = navigator.platform.toLowerCase().includes("linux");

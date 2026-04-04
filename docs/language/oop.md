@@ -163,7 +163,8 @@ class Circle extends Shape {
 }
 
 class Rectangle extends Shape {
-    function init(self, w, h) { self.w = w   self.h = h }
+    function init(self, w, h) { self.w = w
+        self.h = h }
     function area(self) { return self.w * self.h }
 }
 
