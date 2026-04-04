@@ -23,6 +23,12 @@ import string
 from .tokens import TokenType, Token
 from .exceptions import InvalidTokenFault
 
+# Precomputed character sets used in hot lexer loops.
+# Building these once at module load avoids re-creating strings/sets on every
+# character classification check inside make_identifier() and get_tokens().
+_IDENT_START = frozenset(string.ascii_letters + '_')
+_IDENT_CONT  = frozenset(string.ascii_letters + string.digits + '_')
+
 # Try to load the C lexer bridge once at import time.
 # If the shared library hasn't been built yet, _USE_C_LEXER stays False
 # and every call to get_tokens() falls through to the pure-Python path.
@@ -132,7 +138,7 @@ class Lexer:
     # The line is captured before consumption so the token reports the
     # line where the literal starts, not where it ends.
     def make_number(self):
-        num_str = ''
+        chars = []
         dot_count = 0
         line = self.line
         col = self.col
@@ -143,25 +149,26 @@ class Lexer:
                 # syntax if that is added later).
                 if dot_count == 1: break
                 dot_count += 1
-            num_str += self.current_char
+            chars.append(self.current_char)
             self.advance()
 
         # Scientific notation: optional e/E followed by optional +/- and digits
         if self.current_char in ('e', 'E'):
-            num_str += self.current_char
+            chars.append(self.current_char)
             self.advance()
             if self.current_char in ('+', '-'):
-                num_str += self.current_char
+                chars.append(self.current_char)
                 self.advance()
             if self.current_char is None or not self.current_char.isdigit():
                 e = InvalidTokenFault("Expected digits after exponent in number literal")
                 e.line = line
                 raise e
             while self.current_char is not None and self.current_char.isdigit():
-                num_str += self.current_char
+                chars.append(self.current_char)
                 self.advance()
-            return Token(TokenType.FLOAT, float(num_str), line, col)
+            return Token(TokenType.FLOAT, float(''.join(chars)), line, col)
 
+        num_str = ''.join(chars)
         if dot_count == 0:
             return Token(TokenType.INT, int(num_str), line, col)
         else:
@@ -172,13 +179,14 @@ class Lexer:
     # value only for non-keyword tokens avoids wasting memory on strings for
     # tokens whose type already fully identifies them (e.g. 'if', 'while').
     def make_identifier(self):
-        id_str = ''
+        chars = []
         line = self.line
         col = self.col
-        while self.current_char is not None and (self.current_char in string.ascii_letters + string.digits + '_'):
-            id_str += self.current_char
+        while self.current_char is not None and self.current_char in _IDENT_CONT:
+            chars.append(self.current_char)
             self.advance()
 
+        id_str = ''.join(chars)
         token_type = self.KEYWORDS.get(id_str, TokenType.IDENTIFIER)
         # IDENTIFIER and SELF tokens carry the name string as their value so
         # the parser can use token.value to look them up in the environment.
@@ -190,7 +198,7 @@ class Lexer:
     # escape sequences.  The opening quote has already been identified by
     # get_tokens() but not consumed; this method consumes both delimiters.
     def make_string(self):
-        string_val = ''
+        parts = []
         line = self.line
         col = self.col
         self.advance()  # Consume the opening '"'
@@ -209,28 +217,28 @@ class Lexer:
                 if self.current_char == 'u':
                     # \uXXXX — read exactly 4 hex digits
                     self.advance()
-                    hex_str = ''
+                    hex_chars = []
                     for _ in range(4):
                         if self.current_char is None or self.current_char not in '0123456789abcdefABCDEF':
                             e = InvalidTokenFault("\\u requires exactly 4 hex digits")
                             e.line = line
                             raise e
-                        hex_str += self.current_char
+                        hex_chars.append(self.current_char)
                         self.advance()
-                    string_val += chr(int(hex_str, 16))
+                    parts.append(chr(int(''.join(hex_chars), 16)))
                     continue
                 elif self.current_char == 'x':
                     # \xXX — read exactly 2 hex digits
                     self.advance()
-                    hex_str = ''
+                    hex_chars = []
                     for _ in range(2):
                         if self.current_char is None or self.current_char not in '0123456789abcdefABCDEF':
                             e = InvalidTokenFault("\\x requires exactly 2 hex digits")
                             e.line = line
                             raise e
-                        hex_str += self.current_char
+                        hex_chars.append(self.current_char)
                         self.advance()
-                    string_val += chr(int(hex_str, 16))
+                    parts.append(chr(int(''.join(hex_chars), 16)))
                     continue
                 else:
                     escaped = self.ESCAPE_SEQUENCES.get(self.current_char)
@@ -238,9 +246,9 @@ class Lexer:
                         e = InvalidTokenFault(f"Unknown escape sequence '\\{self.current_char}'")
                         e.line = line
                         raise e
-                    string_val += escaped
+                    parts.append(escaped)
             else:
-                string_val += self.current_char
+                parts.append(self.current_char)
             self.advance()
 
         # If we exit the loop because current_char is None (not '"'), the
@@ -251,7 +259,7 @@ class Lexer:
             raise e
 
         self.advance()  # Consume the closing '"'
-        return Token(TokenType.STRING, string_val, line, col)
+        return Token(TokenType.STRING, ''.join(parts), line, col)
 
     # make_fstring() collects the raw template content of a $"..." format string.
     # It does NOT parse expressions — that happens in the parser.  The raw
@@ -259,7 +267,7 @@ class Lexer:
     # embedded expression.  Escape sequences outside of { } are resolved here;
     # characters inside { } are kept verbatim so the parser receives valid code.
     def make_fstring(self, line, col=None):
-        raw = ''
+        parts = []
         self.advance()  # Consume opening '"'
         brace_depth = 0
         while self.current_char is not None:
@@ -267,11 +275,11 @@ class Lexer:
                 break  # Closing quote reached outside any expression
             if self.current_char == '{':
                 brace_depth += 1
-                raw += self.current_char
+                parts.append(self.current_char)
                 self.advance()
             elif self.current_char == '}':
                 brace_depth -= 1
-                raw += self.current_char
+                parts.append(self.current_char)
                 self.advance()
             elif self.current_char == '\\' and brace_depth == 0:
                 # Escape sequences only apply outside { }
@@ -285,10 +293,10 @@ class Lexer:
                     e = InvalidTokenFault(f"Unknown escape sequence '\\{self.current_char}'")
                     e.line = line
                     raise e
-                raw += escaped
+                parts.append(escaped)
                 self.advance()
             else:
-                raw += self.current_char
+                parts.append(self.current_char)
                 self.advance()
 
         if self.current_char != '"':
@@ -296,7 +304,7 @@ class Lexer:
             e.line = line
             raise e
         self.advance()  # Consume closing '"'
-        return Token(TokenType.FSTRING, raw, line, col)
+        return Token(TokenType.FSTRING, ''.join(parts), line, col)
 
     # make_slash() handles the ambiguity between '/' (division) and '//'
     # (integer division).  After consuming the first '/', it peeks at the next
@@ -397,7 +405,7 @@ class Lexer:
                 tokens.append(self.make_number())
 
             # Identifiers and keywords start with a letter or underscore.
-            elif self.current_char in string.ascii_letters or self.current_char == '_':
+            elif self.current_char in _IDENT_START:
                 tokens.append(self.make_identifier())
 
             elif self.current_char == '#':
