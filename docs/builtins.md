@@ -5,12 +5,13 @@
 | Function | Description |
 |---|---|
 | `write(...)` | Print one or more values to stdout, separated by spaces |
-| `listen(prompt)` | Print `prompt` and read a line from stdin. Numbers are auto-converted |
+| `listen(prompt?)` | Print `prompt` and read a line from stdin. Automatically converts to `int` or `float` if the input is numeric; returns a `string` otherwise |
 
 ```
 write("hello")              # hello
 write(1, 2, 3)              # 1 2 3
-name = listen("Name: ")
+name = listen("Name: ")     # returns string
+age  = listen("Age: ")      # returns int if user types a number
 ```
 
 ---
@@ -59,8 +60,9 @@ to_num("3.14")   # 3.14
 | `ceil(x)` | Round up to integer | `ceil(3.1)` → `4` |
 | `round(x, digits?)` | Round to N decimal places (default 0) | `round(3.567, 2)` → `3.57` |
 | `clamp(x, low, high)` | Force x into the range [low, high] | `clamp(15, 0, 10)` → `10` |
-| `max(a, b, ...)` | Maximum of values or a list | `max(3, 8, 2)` → `8` |
-| `min(a, b, ...)` | Minimum of values or a list | `min([5, 1, 9])` → `1` |
+| `max(a, b, ...)` or `max(list)` | Maximum of values or a list | `max(3, 8, 2)` → `8` |
+| `min(a, b, ...)` or `min(list)` | Minimum of values or a list | `min([5, 1, 9])` → `1` |
+| `sum(list)` | Sum all numeric elements of a list | `sum([1, 2, 3])` → `6` |
 | `sign(x)` | Returns -1, 0, or 1 | `sign(-5)` → `-1` |
 | `odd(x)` | True if x is odd | `odd(3)` → `true` |
 | `even(x)` | True if x is even | `even(4)` → `true` |
@@ -76,6 +78,7 @@ to_num("3.14")   # 3.14
 | `pop(list)` | Remove and return the last element |
 | `pop(list, index)` | Remove and return the element at index |
 | `insert(list, index, value)` | Insert value at index, shifting elements right |
+| `sum(list)` | Sum of all numeric elements |
 
 ```
 nums = [10, 20, 30]
@@ -83,6 +86,7 @@ append(nums, 40)
 write(len(nums))      # 4
 write(pop(nums))      # 40
 write(pop(nums, 0))   # 10
+write(sum(nums))      # 50
 
 items = [1, 2, 4]
 insert(items, 2, 3)
@@ -111,6 +115,8 @@ write(remove(d, "a"))  # 1
 
 ## Strings
 
+### Global functions
+
 | Function | Description | Example |
 |---|---|---|
 | `len(s)` | String length | `len("hi")` → `2` |
@@ -125,3 +131,25 @@ write(remove(d, "a"))  # 1
 | `ends(s, suffix)` | True if `s` ends with `suffix` | `ends("hello", "lo")` → `true` |
 | `find(s, sub)` | Index of first occurrence, `-1` if not found | `find("hello", "ll")` → `2` |
 | `count(s, sub)` | Count occurrences of `sub` in `s` | `count("banana", "a")` → `3` |
+
+### Dot methods
+
+All string operations are also available as dot methods and can be chained:
+
+| Method | Equivalent global |
+|---|---|
+| `s.len()` | `len(s)` |
+| `s.trim()` | `trim(s)` |
+| `s.uppercase()` | `uppercase(s)` |
+| `s.lowercase()` | `lowercase(s)` |
+| `s.swap(old, new)` | `swap(s, old, new)` |
+| `s.split(sep?)` | `split(s, sep?)` |
+
+```
+title = "  Hello World  "
+write(title.trim().lowercase())          # hello world
+slug  = title.trim().lowercase().swap(" ", "-")
+write(slug)                              # hello-world
+words = "a,b,c".split(",")
+write(words.join(" | "))                 # a | b | c
+```

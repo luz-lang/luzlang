@@ -35,6 +35,20 @@ connect("localhost")                # localhost:8080 secure=false
 connect("example.com", 443, true)   # example.com:443 secure=true
 ```
 
+## Named (keyword) arguments
+
+Any argument can be passed by name, regardless of its position. Positional arguments must come before named ones.
+
+```
+function create_user(name, age, role = "user") {
+    write($"{name} (age {age}, role: {role})")
+}
+
+create_user("Alice", 30)                     # Alice (age 30, role: user)
+create_user("Bob", age: 25, role: "admin")   # Bob (age 25, role: admin)
+create_user(name: "Carol", age: 28)          # Carol (age 28, role: user)
+```
+
 ## Variadic functions
 
 A `...name` parameter collects all extra arguments into a list. It must be the last parameter.
@@ -132,7 +146,7 @@ write(factorial(6))   # 720
 
 ## Type annotations
 
-Parameters and return values can be annotated with a type. The type is checked at call time — a mismatch raises a `TypeViolationFault`.
+Parameters and return values can be annotated with a type. The type is checked at call time — a mismatch raises a `TypeViolationFault`. The static type checker also reports violations before execution.
 
 ```
 function add(a: int, b: int) -> int {
@@ -140,12 +154,6 @@ function add(a: int, b: int) -> int {
 }
 
 write(add(2, 3))   # 5
-
-attempt {
-    add(2, "x")
-} rescue (e) {
-    write(e)   # TypeViolationFault: Argument 'b' expects type 'int', got 'string'
-}
 ```
 
 Return type annotations are also enforced:
@@ -153,6 +161,17 @@ Return type annotations are also enforced:
 ```
 function positive(x: float) -> bool {
     return x > 0
+}
+```
+
+Nullable return types use `?`:
+
+```
+function find_index(lst: list, val: int) -> int? {
+    for i = 0 to lst.len() - 1 {
+        if lst[i] == val { return i }
+    }
+    return null
 }
 ```
 
@@ -167,7 +186,7 @@ function greet(a: Animal) { write("hello") }
 greet(Dog())   # works — Dog extends Animal
 ```
 
-Valid type names: `int`, `float`, `number`, `string`, `bool`, `list`, `dict`, `null`, or any class name. Unannotated parameters accept any type.
+Valid type names: `int`, `float`, `number`, `string`, `bool`, `list`, `dict`, `null`, `any`, nullable `T?`, generic `list[T]` / `dict[K,V]`, fixed-size integers (`int8`…`int64`, `uint8`…`uint64`), fixed-size floats (`float32`, `float64`), or any class/struct name. Unannotated parameters accept any type.
 
 ## Higher-order functions
 

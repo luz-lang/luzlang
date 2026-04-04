@@ -4,7 +4,7 @@
 
 # Luz Programming Language
 
-**Luz** is an open-source, interpreted programming language written in Python. It features clean syntax, object-oriented programming, closures, pattern matching, error handling, and a built-in package manager — all in a single file you can run with `python main.py`.
+**Luz** is an open-source, interpreted programming language written in Python. It features clean syntax, optional static typing, object-oriented programming, closures, pattern matching, error handling, and a built-in package manager — all in a single file you can run with `python main.py`.
 
 ```
 name = listen("What is your name? ")
@@ -17,22 +17,31 @@ for i = 1 to 5 {
 
 ## Features
 
-- **Dynamic typing** — integers, floats, strings, booleans, lists, dictionaries, `null`
+- **Optional static typing** — annotate variables, parameters, and return types; the type checker validates them before execution
+- **Nullable types** — `T?` allows `null` alongside any type; `??` provides a null-safe fallback
+- **Generic collections** — `list[int]`, `dict[string, float]`, enforced at assignment time
+- **Fixed-size numeric types** — `int8`…`int64`, `uint8`…`uint64`, `float32`, `float64`
+- **Constants** — `const NAME: type = value`, checked at compile time
+- **Structs** — `struct` defines typed, lightweight value records with optional defaults
 - **Format strings** — `$"Hello {name}, you are {age} years old!"`
 - **Control flow** — `if / elif / else`, `while`, `for` (range and for-each), `switch`, `match`
 - **Ternary operator** — `value if condition else other`
-- **Functions** — default parameters, variadic (`...args`), multiple return values, closures
+- **Membership** — `x in list`, `key in dict`, `sub in string`
+- **Functions** — default parameters, variadic (`...args`), named kwargs, multiple return values, closures
 - **Lambdas** — `fn(x) => x * 2` and `fn(x) { body }` as first-class values
-- **Dot method syntax** — `"hello".uppercase()`, `list.append(x)`, `list.contains(x)`
+- **List comprehensions** — `[x * 2 for x in nums if even(x)]`
+- **Dot method syntax** — `"hello".uppercase()`, `list.sort()`, `dict.contains(key)`
 - **Bound methods** — `m = obj.method` stores the method with `self` already bound
 - **Compound assignment** — `+=`, `-=`, `*=`, `/=`
 - **Destructuring assignment** — `x, y = func()`
 - **Negative indexing** — `list[-1]`, `str[-2]`
+- **Slice syntax** — `list[1:4]`, `list[::2]`, `str[0:5]`
 - **Object-oriented programming** — classes, inheritance (`extends`), method overriding, `super`
 - **Error handling** — `attempt / rescue / finally` blocks and `alert`
 - **Modules** — `import`, `from "x" import name`, `import "x" as alias`
+- **Static type checker** — reports type errors, unused variables, and arity mismatches before execution
 - **Package manager** — [Ray](#package-manager-ray), installs packages from GitHub
-- **Standard library** — `luz-math`, `luz-random`, `luz-io`, `luz-system`, `luz-clock`, `luz-types` 
+- **Standard library** — `luz-math`, `luz-random`, `luz-io`, `luz-system`, `luz-clock`, `luz-types`
 - **Helpful errors** — every error includes the line number
 - **REPL** — interactive shell for quick experimentation
 - **VS Code extension** — syntax highlighting, autocompletion, error detection, hover docs, snippets
@@ -54,59 +63,73 @@ Or download the **[Windows installer](https://elabsurdo984.github.io/luz-lang/do
 ## Language at a glance
 
 ```
-# Default parameters and variadic functions
-function greet(name, greeting = "Hello") {
-    write($"{greeting}, {name}!")
+# Optional static typing
+name: string  = "Alice"
+age: int      = 30
+score: float? = null      # nullable — can be float or null
+
+const MAX: int = 100
+
+# Struct — typed value record
+struct Point { x: float, y: float }
+p = Point(3.0, 4.0)
+write($"({p.x}, {p.y})")
+
+# Default parameters, named args, and variadic functions
+function greet(name: string, greeting: string = "Hello") -> string {
+    return $"{greeting}, {name}!"
 }
 
-function sum(...nums) {
-    total = 0
-    for n in nums { total += n }
-    return total
+function total(...nums) -> float {
+    acc: float = 0.0
+    for n in nums { acc += n }
+    return acc
 }
 
-greet("Alice")          # Hello, Alice!
-greet("Bob", "Hi")      # Hi, Bob!
-write(sum(1, 2, 3, 4))  # 10
+write(greet("Alice"))
+write(greet("Bob", greeting: "Hi"))
+write(total(1, 2, 3, 4))   # 10.0
+
+# List comprehension, slices, and in operator
+nums: list[int] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+evens = [x for x in nums if even(x)]   # [2, 4, 6, 8, 10]
+write(evens[1:4])                       # [4, 6, 8]
+write(3 in nums)                        # true
 
 # Multiple return values + destructuring
 function min_max(a, b) {
     if a < b { return a, b }
     else      { return b, a }
 }
-
 lo, hi = min_max(8, 3)
 
-# Ternary operator
-label = "even" if even(lo) else "odd"
-
-# Switch statement
+# switch statement
 switch lo {
     case 0 { write("zero") }
     case 1, 2, 3 { write("small") }
     else { write("other") }
 }
 
-# Match expression
-result = match hi {
+# match expression
+label: string = match hi {
     8 => "eight"
     _ => "something else"
 }
 
 # Dot method syntax — strings and lists
-words = "hello world".split(" ")   # ["hello", "world"]
-words.append("!")
-write(words.join(", "))            # hello, world, !
-write(words.contains("hello"))     # true
+words: list[string] = "hello world".split(" ")
+words.sort()
+write(words.join(", "))
+write(words.contains("hello"))   # true
 
 # Object-oriented programming + bound methods
 class Counter {
     function init(self) { self.n = 0 }
     function inc(self)  { self.n += 1 }
-    function get(self)  { return self.n }
+    function get(self) -> int { return self.n }
 }
 
-c = Counter()
+c: Counter = Counter()
 step = c.inc          # bound method — self already attached
 step()
 step()
@@ -120,6 +143,9 @@ attempt {
 } finally {
     write("done")
 }
+
+# Null-coalescing
+display: string = score ?? "N/A"
 ```
 
 ## Package manager — Ray
@@ -135,17 +161,19 @@ ray remove package-name    # remove a package
 
 ## Standard library
 
-`luz-math` and `luz-random` are bundled with the installer:
+All standard libraries are bundled with the installer:
 
 ```
 import "math"
 import "random"
 
-write(PI)                     # 3.14159265358979
-write(factorial(10))          # 3628800
-write(rand_int(1, 100))       # random integer
-write(choice(["a","b","c"]))  # random element
+write(PI)                       # 3.14159265358979
+write(factorial(10))            # 3628800
+write(random_int(1, 100))       # random integer
+write(pick(["a", "b", "c"]))    # random element
 ```
+
+Available modules: `math`, `random`, `io`, `system`, `clock`, `types`.
 
 ## VS Code extension
 

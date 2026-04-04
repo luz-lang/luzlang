@@ -47,10 +47,13 @@ All Luz errors fall into four categories:
 | Type | Raised when |
 |---|---|
 | `SyntaxFault` | The source code is malformed (lexer or parser) |
-| `SemanticFault` | A name is undefined, wrong number of arguments, wrong type, etc. |
+| `SemanticFault` | A name is undefined, wrong number of arguments, etc. |
+| `TypeViolationFault` | A typed variable or parameter receives the wrong type |
 | `RuntimeFault` | Division by zero, index out of bounds, invalid operation |
 | `UserFault` | Raised explicitly with `alert` |
 | `CastFault` | A type conversion with `to_int`, `to_float`, etc. fails |
+
+The static type checker also reports `TypeCheckFault` errors before execution for type annotation mismatches, arity errors, and unused variables.
 
 Every error message includes the source line number.
 

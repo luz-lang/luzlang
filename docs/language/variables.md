@@ -46,15 +46,15 @@ write(x)   # still 10
 A variable can declare its expected type on assignment. The type is checked at runtime — assigning a value of the wrong type raises a `TypeViolationFault`.
 
 ```
-x: int = 5
+x: int     = 5
 name: string = "Alice"
 active: bool = true
 ratio: float = 0.5
 ```
 
-The type annotation only applies to that assignment. It does not prevent the variable from being reassigned to a different type later (Luz is still dynamically typed).
+The Luz static type checker also reports violations at check time, before execution.
 
-Valid type names: `int`, `float`, `number`, `string`, `bool`, `list`, `dict`, `null`, or any class name.
+Valid type names: `int`, `float`, `number`, `string`, `bool`, `list`, `dict`, `null`, `any`, any class or struct name, or a generic collection type (see below).
 
 ```
 attempt {
@@ -63,6 +63,47 @@ attempt {
     write(e)   # TypeViolationFault: Variable 'x' expects type 'int', got 'string'
 }
 ```
+
+## Generic collection types
+
+You can annotate the element type of a list or the key/value types of a dict:
+
+```
+ids:    list[int]            = [1, 2, 3]
+names:  list[string]         = ["Alice", "Bob"]
+prices: dict[string, float]  = {"apple": 1.5, "banana": 0.8}
+```
+
+A plain `list` or `dict` literal satisfies any `list[T]` / `dict[K,V]` annotation.
+
+## Nullable types
+
+Appending `?` to a type allows the variable to also hold `null`:
+
+```
+username: string? = null    # ok — string or null
+username = "Alice"          # ok
+
+index: int? = find_item()   # may return null
+```
+
+Use the `??` (null-coalescing) operator to supply a fallback when a value is `null`:
+
+```
+display = username ?? "Anonymous"
+```
+
+## Constants
+
+`const` declares a compile-time constant. It cannot be reassigned after declaration.
+
+```
+const MAX_SIZE: int    = 1024
+const APP_NAME: string = "MyApp"
+const PI: float        = 3.14159
+```
+
+Attempting to reassign a constant raises a `SemanticFault`.
 
 ## Compound assignment
 

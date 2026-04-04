@@ -174,3 +174,57 @@ for shape in shapes {
 # 75
 # 24
 ```
+
+---
+
+## Structs
+
+`struct` defines a lightweight, typed, value-type data container. Unlike classes, structs have no methods — they are pure data records with enforced field types.
+
+```
+struct Point {
+    x: float,
+    y: float
+}
+
+struct Config {
+    debug:   bool  = false,
+    timeout: float = 30.0
+}
+```
+
+### Construction
+
+Structs can be instantiated positionally or with keyword arguments:
+
+```
+p1 = Point(3.0, 4.0)            # positional
+p2 = Point(x: 0.0, y: 1.0)     # keyword
+
+cfg = Config()                   # all defaults
+cfg2 = Config(debug: true)       # override one field
+```
+
+### Field access
+
+```
+write(p1.x)   # 3.0
+write(p1.y)   # 4.0
+```
+
+### Field types are enforced
+
+Assigning a value of the wrong type to a struct field raises a `TypeViolationFault`.
+
+```
+struct Pixel {
+    r: uint8,
+    g: uint8,
+    b: uint8
+}
+
+px = Pixel(255, 128, 0)
+write($"rgb({px.r}, {px.g}, {px.b})")
+```
+
+Fields without a default value are required. Providing too many positional arguments raises an `ArityFault`.

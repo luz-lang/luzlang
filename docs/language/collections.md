@@ -10,6 +10,15 @@ mixed  = [1, "two", 3.0, true, null]
 empty  = []
 ```
 
+### Generic type annotations
+
+Annotate the element type for static checking:
+
+```
+scores: list[int]    = [88, 72, 95]
+names:  list[string] = ["Alice", "Bob"]
+```
+
 ### Indexing
 
 Zero-based. Negative indices count from the end:
@@ -34,6 +43,13 @@ for fruit in fruits {
 }
 ```
 
+### Membership test
+
+```
+write("apple" in fruits)      # true
+write("grape" not in fruits)  # true
+```
+
 ### Slicing
 
 Extract a sub-list using `[start:end]` or `[start:end:step]`. Indices are end-exclusive. Negative indices count from the end.
@@ -50,6 +66,16 @@ write(nums[::-1])    # [50, 40, 30, 20, 10]  (reversed)
 
 Slice indices must be integers. A step of `0` raises a `ZeroDivisionFault`.
 
+### List comprehensions
+
+Build a new list from an expression and an optional filter:
+
+```
+squares = [x * x for x in [1, 2, 3, 4, 5]]          # [1, 4, 9, 16, 25]
+evens   = [x for x in range(1, 10) if even(x)]       # [2, 4, 6, 8]
+upper   = [s.uppercase() for s in ["a", "b", "c"]]   # ["A", "B", "C"]
+```
+
 ### List built-ins
 
 | Function | Description |
@@ -59,38 +85,37 @@ Slice indices must be integers. A step of `0` raises a `ZeroDivisionFault`.
 | `pop(list)` | Remove and return the last element |
 | `pop(list, index)` | Remove and return element at index |
 | `insert(list, index, value)` | Insert value at index, shifting elements right |
+| `sum(list)` | Sum all numeric elements |
 
 ```
 nums = [1, 2, 4, 5]
 insert(nums, 2, 3)
-write(nums)   # [1, 2, 3, 4, 5]
+write(nums)       # [1, 2, 3, 4, 5]
+write(sum(nums))  # 15
 ```
 
 ### List dot methods
 
-All list operations are also available as dot methods. Calling a method with the wrong number of arguments raises an `ArityFault`.
-
-```
-nums = [1, 2, 3]
-
-nums.append(4)          # [1, 2, 3, 4]
-last = nums.pop()       # 4  — removes and returns the last element
-write(nums.len())       # 3
-write(nums.contains(2)) # true
-write(nums.contains(9)) # false
-
-words = ["hello", "world"]
-write(words.join(", "))  # hello, world
-```
-
-| Method | Equivalent built-in |
+| Method | Description |
 |---|---|
-| `list.append(value)` | `append(list, value)` |
-| `list.pop()` | `pop(list)` |
-| `list.pop(index)` | `pop(list, index)` |
-| `list.len()` | `len(list)` |
-| `list.contains(value)` | — |
-| `list.join(sep)` | `join(sep, list)` |
+| `list.append(value)` | Add element to the end |
+| `list.pop()` | Remove and return the last element |
+| `list.pop(index)` | Remove and return element at index |
+| `list.len()` | Number of elements |
+| `list.contains(value)` | True if value is in the list |
+| `list.join(sep)` | Join elements into a string |
+| `list.sort()` | Sort in place (ascending) |
+| `list.reverse()` | Reverse in place |
+
+```
+nums = [3, 1, 4, 1, 5, 9]
+nums.sort()
+write(nums)              # [1, 1, 3, 4, 5, 9]
+nums.reverse()
+write(nums)              # [9, 5, 4, 3, 1, 1]
+write(nums.contains(4))  # true
+write(nums.len())        # 6
+```
 
 ---
 
@@ -112,6 +137,38 @@ write(s[:3])    # hel
 write(s[1:])    # ello
 ```
 
+Membership test:
+
+```
+write("ell" in "hello")   # true
+```
+
+### String dot methods
+
+| Method | Description |
+|---|---|
+| `s.len()` | String length |
+| `s.trim()` | Remove surrounding whitespace |
+| `s.uppercase()` | Convert to uppercase |
+| `s.lowercase()` | Convert to lowercase |
+| `s.swap(old, new)` | Replace all occurrences of `old` with `new` |
+| `s.split(sep?)` | Split into a list (default sep: whitespace) |
+
+```
+title = "  Hello, World!  "
+write(title.trim())                   # Hello, World!
+write(title.trim().lowercase())       # hello, world!
+write("a,b,c".split(","))            # ["a", "b", "c"]
+write(title.trim().len())            # 13
+```
+
+Methods can be chained:
+
+```
+slug = "  My Title  ".trim().lowercase().swap(" ", "-")
+write(slug)   # my-title
+```
+
 ---
 
 ## Dictionaries
@@ -122,12 +179,26 @@ A dictionary maps keys to values. Keys must be strings or numbers.
 person = {"name": "Alice", "age": 30}
 ```
 
+### Generic type annotations
+
+```
+prices: dict[string, float] = {"apple": 1.5, "banana": 0.8}
+counts: dict[string, int]   = {"a": 1, "b": 2}
+```
+
 ### Access and assignment
 
 ```
 write(person["name"])   # Alice
 person["age"] = 31
 person["city"] = "Madrid"
+```
+
+### Membership test
+
+```
+write("name" in person)      # true
+write("email" not in person) # true
 ```
 
 ### Iteration
@@ -151,18 +222,6 @@ for key in person {
 
 ### Dictionary dot methods
 
-All dictionary operations are also available as dot methods:
-
-```
-person = {"name": "Alice", "age": 30}
-
-write(person.keys())          # ["name", "age"]
-write(person.values())        # ["Alice", 30]
-write(person.len())           # 2
-write(person.contains("age")) # true
-person.remove("age")
-```
-
 | Method | Equivalent built-in |
 |---|---|
 | `dict.keys()` | `keys(dict)` |
@@ -170,3 +229,13 @@ person.remove("age")
 | `dict.len()` | `len(dict)` |
 | `dict.contains(key)` | `key in dict` |
 | `dict.remove(key)` | `remove(dict, key)` |
+
+```
+person = {"name": "Alice", "age": 30}
+
+write(person.keys())           # ["name", "age"]
+write(person.values())         # ["Alice", 30]
+write(person.len())            # 2
+write(person.contains("age"))  # true
+person.remove("age")
+```
