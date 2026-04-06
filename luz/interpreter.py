@@ -1629,6 +1629,13 @@ class Interpreter:
                 raise RuntimeFault("Cannot pop from an empty list")
             raise IndexFault(f"Index {index} is out of range in pop() operation for list of size {len(list_obj)}")
 
+    def _safe_list_sort(self, list_obj):
+        try:
+            list_obj.sort()
+        except TypeError:
+            raise TypeViolationFault("Cannot sort a list with mixed types")
+        return None
+
     def builtin_reverse(self, value):
         """Return a reversed copy of a list or string"""
         if isinstance(value, list):
@@ -1951,7 +1958,7 @@ class Interpreter:
             list_methods = {
                 'pop':      lambda: self.builtin_pop(obj, args[0] if args else None),
                 'len':      lambda: self.builtin_len(obj),
-                'sort':     lambda: obj.sort() or None,
+                'sort':     lambda: self._safe_list_sort(obj),
                 'reverse':  lambda: obj.reverse() or None,
             }
             if method_name in list_methods:
