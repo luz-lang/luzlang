@@ -452,7 +452,13 @@ class TypeChecker:
         op    = node.op_token.type
 
         if T.UNKNOWN not in (left, right):
-            if op in self._NUMERIC_OPS:
+            # string * int (string repetition) is valid
+            if op == TokenType.MUL and (
+                (left == T.STRING and right in T.NUMERIC) or
+                (right == T.STRING and left in T.NUMERIC)
+            ):
+                pass
+            elif op in self._NUMERIC_OPS:
                 for typ, side in ((left, "left"), (right, "right")):
                     if typ not in T.NUMERIC and typ != T.UNKNOWN:
                         self._err(
@@ -491,6 +497,12 @@ class TypeChecker:
             # Same non-numeric type (string+string, list+list) — only valid for PLUS
             if op == TokenType.PLUS and left == right and left in self._PLUS_COMPATIBLE:
                 return left
+            # string * int or int * string — string repetition
+            if op == TokenType.MUL:
+                if left == T.STRING and right in T.NUMERIC:
+                    return T.STRING
+                if right == T.STRING and left in T.NUMERIC:
+                    return T.STRING
         return T.UNKNOWN
 
     def visit_UnaryOpNode(self, node) -> str:
