@@ -1146,15 +1146,15 @@ class Interpreter:
                 raise ZeroDivisionFault("Zero cannot be raised to a negative power")
 
         elif node.op_token.type == TokenType.IN:
-            if not isinstance(right, (list, str)):
-                raise TypeClashFault(f"'in' requires a list or string on the right, got '{self._luz_type_name(right)}'")
+            if not isinstance(right, (list, str, dict)):
+                raise TypeClashFault(f"'in' requires a list, string or dict on the right, got '{self._luz_type_name(right)}'")
             if isinstance(right, str) and not isinstance(left, str):
                 raise TypeClashFault(f"'in <string>' requires a string on the left, got '{self._luz_type_name(left)}'")
             return left in right
 
         elif node.op_token.type == TokenType.NOT_IN:
-            if not isinstance(right, (list, str)):
-                raise TypeClashFault(f"'not in' requires a list or string on the right, got '{self._luz_type_name(right)}'")
+            if not isinstance(right, (list, str, dict)):
+                raise TypeClashFault(f"'not in' requires a list, string or dict on the right, got '{self._luz_type_name(right)}'")
             return left not in right
 
         # Equality operators work across any types (mixed-type comparison just
