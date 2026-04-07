@@ -3,6 +3,7 @@ from luz.lexer import Lexer
 from luz.parser import Parser
 from luz.interpreter import Interpreter
 from luz.typechecker import TypeChecker
+from luz.exceptions import BreakException, ContinueException, ReturnException, SemanticFault
 
 def run(text, interpreter):
     try:
@@ -20,6 +21,18 @@ def run(text, interpreter):
 
         result = interpreter.visit(ast)
         return result
+    except BreakException as e:
+        err = SemanticFault("'break' used outside of a loop")
+        err.line = e.line
+        raise err
+    except ContinueException as e:
+        err = SemanticFault("'continue' used outside of a loop")
+        err.line = e.line
+        raise err
+    except ReturnException as e:
+        err = SemanticFault("'return' used outside of a function")
+        err.line = e.line
+        raise err
     except Exception as e:
         error_name = type(e).__name__
         line = getattr(e, 'line', None)

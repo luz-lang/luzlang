@@ -2036,8 +2036,10 @@ class Interpreter:
     # any of its subclasses, walking up the hierarchy.
     # This enables polymorphic checks: instanceof(dog, Animal) == true
     def builtin_instanceof(self, value, luz_class):
+        if isinstance(luz_class, LuzStruct):
+            return isinstance(value, LuzStructInstance) and value.struct_def is luz_class
         if not isinstance(luz_class, LuzClass):
-            raise ArgumentFault("instanceof() second argument must be a class")
+            raise ArgumentFault("instanceof() second argument must be a class or struct")
         if not isinstance(value, LuzInstance):
             return False
         cls = value.luz_class

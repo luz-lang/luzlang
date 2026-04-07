@@ -1308,6 +1308,11 @@ class Parser:
         if token.type == TokenType.MATCH:
             return self.match_expr()
 
+        if token.type == TokenType.PLUS:
+            # Unary plus is a no-op: advance and return the inner expression.
+            self.advance()
+            return self.factor()
+
         if token.type == TokenType.MINUS:
             # Unary minus: recurse into factor() so that '--x' also works.
             self.advance()
