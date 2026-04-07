@@ -652,29 +652,19 @@ class LLVMCodeGen:
 
     def verify(self) -> None:
         """Verify the generated LLVM module (raises on malformed IR)."""
-        llvm.initialize()
-        llvm.initialize_native_target()
         mod = llvm.parse_assembly(str(self.module))
         mod.verify()
 
     def compile_to_object(self, output_path: str, opt: int = 2) -> None:
         """Compile the module to a native object file."""
-        llvm.initialize()
         llvm.initialize_native_target()
         llvm.initialize_native_asmprinter()
-
         target  = llvm.Target.from_default_triple()
         machine = target.create_target_machine(
             opt=opt, reloc="pic", codemodel="default"
         )
         mod = llvm.parse_assembly(str(self.module))
         mod.verify()
-
-        pmb = llvm.create_pass_manager_builder()
-        pmb.opt_level = opt
-        pm = llvm.create_module_pass_manager()
-        pmb.populate(pm)
-        pm.run(mod)
 
         obj = machine.emit_object(mod)
         with open(output_path, "wb") as f:
@@ -695,7 +685,7 @@ class LLVMCodeGen:
                 if os.path.exists(extra):
                     objs.append(extra)
             subprocess.run(["gcc", *objs, "-o", output_path, "-lm"],
-                           check=True)
+                           check=True, stderr=subprocess.DEVNULL)
         finally:
             if os.path.exists(obj_path):
                 os.remove(obj_path)

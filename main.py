@@ -63,15 +63,129 @@ def check(filename):
         msg = getattr(e, 'message', str(e))
         print(json.dumps([{"line": line, "message": msg}]))
 
+
+def _load_source(filename):
+    """Read a .luz file and return its source text."""
+    try:
+        with open(filename, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        print(f"Error: File '{filename}' not found.")
+        sys.exit(1)
+
+
+def _build_hir(code, filename):
+    """Lex, parse, and lower to HIR. Exits on syntax/type errors."""
+    lexer  = Lexer(code)
+    tokens = lexer.get_tokens()
+    parser = Parser(tokens)
+    ast    = parser.parse()
+
+    errors = TypeChecker().check(ast)
+    if errors:
+        for e in errors:
+            print(e)
+        sys.exit(1)
+
+    from luz.hir import Lowering
+    return Lowering().lower_program(ast)
+
+
+def emit_ir(filename):
+    """Print the LLVM IR generated from a .luz file."""
+    try:
+        from luz.codegen import LLVMCodeGen
+    except ImportError:
+        print("Error: llvmlite is not installed. Run: pip install llvmlite")
+        sys.exit(1)
+
+    code = _load_source(filename)
+    hir  = _build_hir(code, filename)
+    gen  = LLVMCodeGen()
+    gen.gen_program(hir)
+    print(str(gen.module))
+
+
+def compile_file(filename, output=None):
+    """Compile a .luz file to a native executable."""
+    try:
+        from luz.codegen import LLVMCodeGen
+    except ImportError:
+        print("Error: llvmlite is not installed. Run: pip install llvmlite")
+        sys.exit(1)
+
+    import os, subprocess
+    output = output or os.path.splitext(filename)[0]
+    code   = _load_source(filename)
+    hir    = _build_hir(code, filename)
+    gen    = LLVMCodeGen()
+    gen.gen_program(hir)
+    try:
+        gen.compile_to_exe(output)
+        print(f"Compiled: {output}")
+    except subprocess.CalledProcessError:
+        print("Error: linking failed. Make sure the C runtime is compiled (cd luz/runtime && make).")
+        sys.exit(1)
+
+
+def compile_and_run(filename):
+    """Compile a .luz file and run it immediately, then delete the binary."""
+    try:
+        from luz.codegen import LLVMCodeGen
+    except ImportError:
+        print("Error: llvmlite is not installed. Run: pip install llvmlite")
+        sys.exit(1)
+
+    import os, subprocess, tempfile
+    code = _load_source(filename)
+    hir  = _build_hir(code, filename)
+    gen  = LLVMCodeGen()
+    gen.gen_program(hir)
+
+    fd, tmp = tempfile.mkstemp(suffix=(".exe" if sys.platform == "win32" else ""))
+    os.close(fd)
+    try:
+        gen.compile_to_exe(tmp)
+        subprocess.run([tmp], check=False)
+    except subprocess.CalledProcessError:
+        print("Error: linking failed. Make sure the C runtime is compiled (cd luz/runtime && make).")
+        sys.exit(1)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
 def main():
     interpreter = Interpreter()
+    args = sys.argv[1:]
 
-    if len(sys.argv) > 2 and sys.argv[1] == '--check':
-        check(sys.argv[2])
+    # --check <file>  (VS Code extension)
+    if args and args[0] == '--check' and len(args) >= 2:
+        check(args[1])
         return
 
-    if len(sys.argv) > 1:
-        filename = sys.argv[1]
+    # --emit-ir <file>
+    if args and args[0] == '--emit-ir' and len(args) >= 2:
+        emit_ir(args[1])
+        return
+
+    # --compile <file> [-o output]
+    if args and args[0] == '--compile' and len(args) >= 2:
+        output = None
+        if '-o' in args:
+            idx = args.index('-o')
+            if idx + 1 < len(args):
+                output = args[idx + 1]
+        compile_file(args[1], output)
+        return
+
+    # --run <file>
+    if args and args[0] == '--run' and len(args) >= 2:
+        compile_and_run(args[1])
+        return
+
+    if args:
+        filename = args[0]
         try:
             with open(filename, 'r', encoding='utf-8') as f:
                 code = f.read()
@@ -80,9 +194,9 @@ def main():
             print(f"Error: File '{filename}' not found.")
         except Exception as e:
             print(f"Error reading file: {e}")
-    
+
     else:
-        print(f"Luz Interpreter v1.18.0 - Type 'exit' to terminate")
+        print(f"Luz Interpreter v1.19.0 - Type 'exit' to terminate")
         while True:
             try:
                 text = input("Luz > ")
