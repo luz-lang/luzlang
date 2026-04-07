@@ -68,7 +68,13 @@ class LLVMCodeGen:
             )
 
         self.module = ir.Module(name=module_name)
-        self.module.triple = llvm.get_default_triple()
+        triple = llvm.get_default_triple()
+        # On Windows, llvmlite defaults to x86_64-pc-windows-msvc (MSVC ABI).
+        # The C runtime is compiled with MinGW (GNU ABI), so we force the GNU
+        # triple to avoid struct-return ABI mismatches.
+        if "windows-msvc" in triple:
+            triple = triple.replace("windows-msvc", "windows-gnu")
+        self.module.triple = triple
 
         # Primitive LLVM types
         self.i1   = ir.IntType(1)
