@@ -739,6 +739,40 @@ class LLVMCodeGen:
         mod = llvm.parse_assembly(str(self.module))
         mod.verify()
 
+    def _run_passes(self, mod, machine, opt: int) -> None:
+        """Run the LLVM middle-end optimization pipeline on a parsed module.
+
+        create_target_machine(opt=N) only controls the backend (register
+        allocation, instruction scheduling).  The middle-end passes — SROA,
+        inlining, constant propagation, dead code elimination, loop
+        optimizations — require an explicit pass pipeline run.
+
+        Key wins for Luz specifically:
+          - SROA/mem2reg promotes the alloca/store/load triples emitted by
+            the _pw Windows ABI wrappers to SSA values, removing the overhead.
+          - Inlining folds trivial runtime helpers into callers.
+          - Constant propagation folds expressions that hir.py didn't fold.
+          - DCE removes unreachable code blocks.
+        """
+        pto = llvm.newpassmanagers.PipelineTuningOptions(speed_level=opt)
+        pb  = llvm.create_pass_builder(machine, pto)
+        pm  = pb.getModulePassManager()
+
+        # Core passes that have the most impact for generated Luz code.
+        pm.add_sroa_pass()                   # promote allocas → SSA registers
+        pm.add_instruction_combine_pass()    # peephole + algebraic simplification
+        pm.add_simplify_cfg_pass()           # remove unreachable / merge blocks
+        pm.add_dead_store_elimination_pass() # remove stores whose value is unused
+        pm.add_aggressive_dce_pass()         # remove dead instructions
+        pm.add_constant_merge_pass()         # deduplicate constant globals
+        pm.add_global_opt_pass()             # optimise global variables
+        if opt >= 2:
+            pm.add_tail_call_elimination_pass()
+            pm.add_jump_threading_pass()
+            pm.add_mem_copy_opt_pass()       # replace memcpy patterns
+
+        pm.run(mod, pb)
+
     def compile_to_object(self, output_path: str, opt: int = 2) -> None:
         """Compile the module to a native object file."""
         llvm.initialize_native_target()
@@ -749,6 +783,8 @@ class LLVMCodeGen:
         )
         mod = llvm.parse_assembly(str(self.module))
         mod.verify()
+        if opt > 0:
+            self._run_passes(mod, machine, opt)
 
         obj = machine.emit_object(mod)
         with open(output_path, "wb") as f:
