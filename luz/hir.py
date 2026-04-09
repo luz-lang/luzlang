@@ -391,9 +391,32 @@ class Lowering:
 
     # ── Operators ─────────────────────────────────────────────────────────────
 
+    # Map TokenType → operator string used by codegen's _BINOP_RT table.
+    _BINOP_TOKEN_OP = {
+        "PLUS":    "+",
+        "MINUS":   "-",
+        "MUL":     "*",
+        "DIV":     "/",
+        "IDIV":    "//",
+        "MOD":     "%",
+        "POW":     "**",
+        "EE":      "==",
+        "NE":      "!=",
+        "LT":      "<",
+        "LTE":     "<=",
+        "GT":      ">",
+        "GTE":     ">=",
+        "AND":     "and",
+        "OR":      "or",
+        "IN":      "in",
+        "NOT_IN":  "not in",
+    }
+
     def lower_BinOpNode(self, node) -> HirBinOp:
+        tok_name = node.op_token.type.name  # e.g. "PLUS"
+        op = self._BINOP_TOKEN_OP.get(tok_name, node.op_token.value)
         return HirBinOp(
-            op=node.op_token.value,
+            op=op,
             left=self.lower(node.left_node),
             right=self.lower(node.right_node),
         )

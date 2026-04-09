@@ -75,6 +75,7 @@ class LLVMCodeGen:
         if "windows-msvc" in triple:
             triple = triple.replace("windows-msvc", "windows-gnu")
         self.module.triple = triple
+        self._is_windows = "windows" in triple
 
         # Primitive LLVM types
         self.i1   = ir.IntType(1)
@@ -98,6 +99,8 @@ class LLVMCodeGen:
         self._runtime:     dict[str, ir.Function] = {}
 
         self._declare_runtime()
+        if self._is_windows:
+            self._declare_windows_abi()
 
     # ── Constant constructors ────────────────────────────────────────────────
 
@@ -214,6 +217,84 @@ class LLVMCodeGen:
         self._fn("luz_rt_make_dict", vt, self.i32)
         self._fn("luz_rt_str_literal", vt, p, self.i64)
 
+    def _declare_windows_abi(self):
+        """Declare pointer-wrapped (_pw) versions of every runtime function that
+        passes or returns a luz_value_t, to avoid the Windows x64 struct ABI
+        mismatch between LLVM-generated code and MinGW-compiled C.
+
+        Wrapper signature rules:
+          - If original returns val_t  → _pw returns void, first arg is ptr (out)
+          - If original returns other  → _pw keeps original return type
+          - Each val_t argument        → becomes ptr in _pw
+          - Non-val_t arguments        → unchanged
+        """
+        for name, orig_fn in list(self._runtime.items()):
+            ftype = orig_fn.function_type
+            has_val_arg   = any(pt == self.val_t for pt in ftype.args)
+            returns_val_t = ftype.return_type == self.val_t
+            if not has_val_arg and not returns_val_t:
+                continue  # no struct involvement — no wrapper needed
+
+            pw_args = []
+            if returns_val_t:
+                pw_args.append(self.ptr)  # first arg: output pointer
+
+            for pt in ftype.args:
+                pw_args.append(self.ptr if pt == self.val_t else pt)
+
+            pw_ret   = self.void if returns_val_t else ftype.return_type
+            pw_ftype = ir.FunctionType(pw_ret, pw_args)
+            pw_fn    = ir.Function(self.module, pw_ftype, name=name + "_pw")
+            pw_fn.linkage = "external"
+            self._runtime[name + "_pw"] = pw_fn
+
+    def _rt_call(self, name: str, args: list) -> ir.Value:
+        """Call a runtime function, routing through the pointer-wrapped version
+        on Windows to avoid the struct-by-value ABI mismatch.
+
+        Returns:
+          - The luz_value_t result for value-returning functions.
+          - null_val  for void functions.
+          - The raw result (e.g. i1) for other return types (luz_rt_truthy).
+        """
+        orig_fn  = self._rt(name)
+        ftype    = orig_fn.function_type
+        orig_ret = ftype.return_type
+
+        if not self._is_windows:
+            result = self._builder.call(orig_fn, args)
+            return result if orig_ret != self.void else self._null_val()
+
+        pw_fn = self._runtime.get(name + "_pw")
+        if pw_fn is None:
+            # No wrapper exists (function has no val_t involvement).
+            result = self._builder.call(orig_fn, args)
+            return result if orig_ret != self.void else self._null_val()
+
+        returns_val_t = (orig_ret == self.val_t)
+        call_args: list = []
+        out_slot  = None
+
+        if returns_val_t:
+            out_slot = self._builder.alloca(self.val_t, name="pw_ret")
+            call_args.append(self._builder.bitcast(out_slot, self.ptr))
+
+        for arg, pt in zip(args, ftype.args):
+            if pt == self.val_t:
+                slot = self._builder.alloca(self.val_t)
+                self._builder.store(arg, slot)
+                call_args.append(self._builder.bitcast(slot, self.ptr))
+            else:
+                call_args.append(arg)
+
+        result = self._builder.call(pw_fn, call_args)
+
+        if returns_val_t:
+            return self._builder.load(out_slot, name="pw_result")
+        if orig_ret == self.void:
+            return self._null_val()
+        return result  # e.g. i1 for luz_rt_truthy
+
     def _rt(self, name: str) -> ir.Function:
         return self._runtime[name]
 
@@ -298,8 +379,7 @@ class LLVMCodeGen:
             g.initializer    = ir.Constant(arr_ty, bytearray(b + b"\0"))
             data_ptr = self._builder.bitcast(g, self.ptr)
             length   = ir.Constant(self.i64, len(b))
-            return self._builder.call(self._rt("luz_rt_str_literal"),
-                                      [data_ptr, length])
+            return self._rt_call("luz_rt_str_literal", [data_ptr, length])
         return self._null_val()
 
     # ── Variables ─────────────────────────────────────────────────────────────
@@ -353,15 +433,15 @@ class LLVMCodeGen:
         right = self.gen(node.right)
         rt    = self._BINOP_RT.get(node.op)
         if rt:
-            return self._builder.call(self._rt(rt), [left, right])
+            return self._rt_call(rt, [left, right])
         return self._null_val()
 
     def _gen_HirUnaryOp(self, node: HirUnaryOp) -> ir.Value:
         operand = self.gen(node.operand)
         if node.op == "-":
-            return self._builder.call(self._rt("luz_rt_neg"), [operand])
+            return self._rt_call("luz_rt_neg", [operand])
         if node.op == "not":
-            return self._builder.call(self._rt("luz_rt_not"), [operand])
+            return self._rt_call("luz_rt_not", [operand])
         return operand
 
     # ── Control flow ──────────────────────────────────────────────────────────
@@ -376,7 +456,7 @@ class LLVMCodeGen:
 
     def _gen_HirIf(self, node: HirIf) -> None:
         cond_val = self.gen(node.cond)
-        cond_i1  = self._builder.call(self._rt("luz_rt_truthy"), [cond_val])
+        cond_i1  = self._rt_call("luz_rt_truthy", [cond_val])
 
         fn       = self._func
         then_bb  = fn.append_basic_block("if.then")
@@ -419,7 +499,7 @@ class LLVMCodeGen:
         # condition block
         self._builder.position_at_end(cond_bb)
         cond_val = self.gen(node.cond)
-        cond_i1  = self._builder.call(self._rt("luz_rt_truthy"), [cond_val])
+        cond_i1  = self._rt_call("luz_rt_truthy", [cond_val])
         self._builder.cbranch(cond_i1, body_bb, exit_bb)
 
         # body block
@@ -551,9 +631,7 @@ class LLVMCodeGen:
 
         rt_name = self._BUILTIN_RT.get(node.func)
         if rt_name and rt_name in self._runtime:
-            fn     = self._rt(rt_name)
-            result = self._builder.call(fn, args)
-            return result if fn.function_type.return_type != self.void else self._null_val()
+            return self._rt_call(rt_name, args)
 
         if node.func in self._user_funcs:
             return self._builder.call(self._user_funcs[node.func], args)
@@ -569,19 +647,19 @@ class LLVMCodeGen:
 
     def _gen_HirList(self, node: HirList) -> ir.Value:
         n   = ir.Constant(self.i32, len(node.elements))
-        lst = self._builder.call(self._rt("luz_rt_make_list"), [n])
+        lst = self._rt_call("luz_rt_make_list", [n])
         for elem in node.elements:
             val = self.gen(elem)
-            self._builder.call(self._rt("luz_builtin_append"), [lst, val])
+            self._rt_call("luz_builtin_append", [lst, val])
         return lst
 
     def _gen_HirDict(self, node: HirDict) -> ir.Value:
         n = ir.Constant(self.i32, len(node.pairs))
-        d = self._builder.call(self._rt("luz_rt_make_dict"), [n])
+        d = self._rt_call("luz_rt_make_dict", [n])
         for k_node, v_node in node.pairs:
             k = self.gen(k_node)
             v = self.gen(v_node)
-            self._builder.call(self._rt("luz_rt_setindex"), [d, k, v])
+            self._rt_call("luz_rt_setindex", [d, k, v])
         return d
 
     # ── Field / index access ──────────────────────────────────────────────────
@@ -589,24 +667,24 @@ class LLVMCodeGen:
     def _gen_HirFieldLoad(self, node: HirFieldLoad) -> ir.Value:
         obj  = self.gen(node.obj)
         name = self._cstr(node.field)
-        return self._builder.call(self._rt("luz_rt_getfield"), [obj, name])
+        return self._rt_call("luz_rt_getfield", [obj, name])
 
     def _gen_HirFieldStore(self, node: HirFieldStore) -> None:
         obj   = self.gen(node.obj)
         name  = self._cstr(node.field)
         value = self.gen(node.value)
-        self._builder.call(self._rt("luz_rt_setfield"), [obj, name, value])
+        self._rt_call("luz_rt_setfield", [obj, name, value])
 
     def _gen_HirIndex(self, node: HirIndex) -> ir.Value:
         coll  = self.gen(node.collection)
         index = self.gen(node.index)
-        return self._builder.call(self._rt("luz_rt_getindex"), [coll, index])
+        return self._rt_call("luz_rt_getindex", [coll, index])
 
     def _gen_HirIndexStore(self, node: HirIndexStore) -> None:
         coll  = self.gen(node.collection)
         index = self.gen(node.index)
         value = self.gen(node.value)
-        self._builder.call(self._rt("luz_rt_setindex"), [coll, index, value])
+        self._rt_call("luz_rt_setindex", [coll, index, value])
 
     def _cstr(self, s: str) -> ir.Value:
         """Intern a C string as a private global and return an i8* to it."""
@@ -623,7 +701,7 @@ class LLVMCodeGen:
 
     def _gen_HirAlert(self, node: HirAlert) -> None:
         val = self.gen(node.value)
-        self._builder.call(self._rt("luz_raise"), [val])
+        self._rt_call("luz_raise", [val])
         self._builder.unreachable()
 
     def _gen_HirAttemptRescue(self, node: HirAttemptRescue) -> None:
@@ -677,20 +755,32 @@ class LLVMCodeGen:
             f.write(obj)
 
     def compile_to_exe(self, output_path: str,
-                       runtime_obj: str = "luz/runtime/luz_runtime.o",
-                       rt_ops_obj:  str = "luz/runtime/luz_rt_ops.o") -> None:
+                       runtime_obj:    str = "luz/runtime/luz_runtime.o",
+                       rt_ops_obj:     str = "luz/runtime/luz_rt_ops.o",
+                       rt_win_abi_obj: str = "luz/runtime/luz_rt_win_abi.o") -> None:
         """Compile + link the program into a standalone executable."""
-        import subprocess, os, tempfile
+        import subprocess, os, sys, tempfile
 
         fd, obj_path = tempfile.mkstemp(suffix=".o")
         os.close(fd)
         try:
             self.compile_to_object(obj_path)
             objs = [obj_path]
-            for extra in (runtime_obj, rt_ops_obj):
+            for extra in (runtime_obj, rt_ops_obj, rt_win_abi_obj):
                 if os.path.exists(extra):
                     objs.append(extra)
-            subprocess.run(["gcc", *objs, "-o", output_path, "-lm"],
+
+            # On Windows, the system gcc may be a 32-bit MinGW that cannot link
+            # the 64-bit COFF objects produced by llvmlite.  Prefer the MSYS2
+            # MinGW64 toolchain which is the same environment used to build the
+            # runtime.
+            gcc = "gcc"
+            if sys.platform == "win32":
+                msys2_gcc = r"C:\msys64\mingw64\bin\gcc.exe"
+                if os.path.exists(msys2_gcc):
+                    gcc = msys2_gcc
+
+            subprocess.run([gcc, *objs, "-o", output_path, "-lm"],
                            check=True, stderr=subprocess.DEVNULL)
         finally:
             if os.path.exists(obj_path):
