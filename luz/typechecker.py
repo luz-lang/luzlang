@@ -110,17 +110,50 @@ class T:
         # float32 satisfies float64
         if actual == T.FLOAT32 and declared == T.FLOAT64:
             return True
-        
+
+        # Generic types: list[T], dict[K, V]
         if '[' in declared:
-            base = declared[:declared.index('[')]
-            # bare list/dict literal satisfies list[T]/dict[K,V]
-            if declared == actual or actual == base:
+            d_base = declared[:declared.index('[')]
+            # Bare list/dict literal satisfies any generic list/dict
+            if actual == d_base:
                 return True
-            return False
-        if '[' in actual:
-            base = actual[:actual.index('[')]
-            return declared == base
+            if '[' in actual:
+                a_base = actual[:actual.index('[')]
+                if d_base != a_base:
+                    return False
+                
+                # Extract inner types
+                d_inner = declared[declared.index('[')+1 : -1]
+                a_inner = actual[actual.index('[')+1 : -1]
+                
+                if d_base == T.LIST:
+                    return T.compatible(d_inner, a_inner)
+                
+                if d_base == T.DICT:
+                    d_parts = T._split_generic_args(d_inner)
+                    a_parts = T._split_generic_args(a_inner)
+                    if len(d_parts) != len(a_parts):
+                        return False
+                    return all(T.compatible(dp, ap) for dp, ap in zip(d_parts, a_parts))
+
         return False
+
+    @staticmethod
+    def _split_generic_args(s: str) -> list[str]:
+        """Split 'K, V' into ['K', 'V'], respecting nested brackets."""
+        parts = []
+        start = 0
+        depth = 0
+        for i, char in enumerate(s):
+            if char == '[':
+                depth += 1
+            elif char == ']':
+                depth -= 1
+            elif char == ',' and depth == 0:
+                parts.append(s[start:i].strip())
+                start = i + 1
+        parts.append(s[start:].strip())
+        return parts
 
     @staticmethod
     def of_literal(node) -> str:
@@ -343,13 +376,33 @@ class TypeChecker:
     def visit_NullNode(self, _)    -> str: return T.NULL
 
     def visit_ListNode(self, node) -> str:
-        for el in node.elements:
-            self.visit(el)
+        if not node.elements:
+            return T.LIST
+        
+        element_types = [self.visit(el) for el in node.elements]
+        # Infer specific type if all elements are the same type
+        first = element_types[0]
+        if first != T.UNKNOWN and all(t == first for t in element_types):
+            return f"{T.LIST}[{first}]"
+        
         return T.LIST
 
     def visit_DictNode(self, node) -> str:
-        for k, v in node.pairs:
-            self.visit(k); self.visit(v)
+        if not node.pairs:
+            return T.DICT
+        
+        key_types = [self.visit(k) for k, _ in node.pairs]
+        val_types = [self.visit(v) for _, v in node.pairs]
+        
+        k_first = key_types[0]
+        v_first = val_types[0]
+        
+        inferred_k = k_first if (k_first != T.UNKNOWN and all(t == k_first for t in key_types)) else T.UNKNOWN
+        inferred_v = v_first if (v_first != T.UNKNOWN and all(t == v_first for t in val_types)) else T.UNKNOWN
+        
+        if inferred_k != T.UNKNOWN and inferred_v != T.UNKNOWN:
+            return f"{T.DICT}[{inferred_k}, {inferred_v}]"
+        
         return T.DICT
 
     def visit_TupleNode(self, node) -> str:
