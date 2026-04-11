@@ -37,6 +37,16 @@ HIR_LIST     = "list"
 HIR_DICT     = "dict"
 HIR_FUNCTION = "function"
 
+def _hir_type_of(v) -> str:
+    """Return the HIR type constant for a Python literal value."""
+    if isinstance(v, bool):   return HIR_BOOL
+    if isinstance(v, int):    return HIR_INT
+    if isinstance(v, float):  return HIR_FLOAT
+    if isinstance(v, str):    return HIR_STRING
+    if v is None:             return HIR_NULL
+    return HIR_UNKNOWN
+
+
 # ── HIR node definitions ─────────────────────────────────────────────────────
 
 @dataclass
@@ -412,20 +422,90 @@ class Lowering:
         "NOT_IN":  "not in",
     }
 
-    def lower_BinOpNode(self, node) -> HirBinOp:
-        tok_name = node.op_token.type.name  # e.g. "PLUS"
-        op = self._BINOP_TOKEN_OP.get(tok_name, node.op_token.value)
-        return HirBinOp(
-            op=op,
-            left=self.lower(node.left_node),
-            right=self.lower(node.right_node),
-        )
+    def lower_BinOpNode(self, node) -> "HirBinOp | HirLiteral":
+        tok_name = node.op_token.type.name
+        op   = self._BINOP_TOKEN_OP.get(tok_name, node.op_token.value)
+        left = self.lower(node.left_node)
+        right = self.lower(node.right_node)
 
-    def lower_UnaryOpNode(self, node) -> HirUnaryOp:
-        return HirUnaryOp(
-            op=node.op_token.value,
-            operand=self.lower(node.node),
-        )
+        # Constant folding: evaluate at compile time when both sides are literals.
+        if isinstance(left, HirLiteral) and isinstance(right, HirLiteral):
+            folded = self._fold_bin(op, left.value, right.value)
+            if folded is not None:
+                return HirLiteral(folded, _hir_type_of(folded))
+
+        return HirBinOp(op=op, left=left, right=right)
+
+    @staticmethod
+    def _fold_bin(op: str, lv, rv):
+        """Evaluate a binary op on two literal Python values.
+        Returns the folded result, or None if folding is not safe/applicable."""
+        # Skip bool operands for arithmetic — Luz booleans are not integers.
+        is_num = lambda v: isinstance(v, (int, float)) and not isinstance(v, bool)
+        try:
+            if op == "+":
+                if is_num(lv) and is_num(rv):   return lv + rv
+                if isinstance(lv, str) and isinstance(rv, str): return lv + rv
+            elif op == "-":
+                if is_num(lv) and is_num(rv):   return lv - rv
+            elif op == "*":
+                if is_num(lv) and is_num(rv):   return lv * rv
+                if isinstance(lv, str) and isinstance(rv, int) and not isinstance(rv, bool):
+                    return lv * rv
+            elif op == "/":
+                if is_num(lv) and is_num(rv) and rv != 0:
+                    return lv / rv
+            elif op == "//":
+                if is_num(lv) and is_num(rv) and rv != 0:
+                    import math
+                    if isinstance(lv, int) and isinstance(rv, int):
+                        q = lv // rv
+                        return q
+                    return float(math.floor(lv / rv))
+            elif op == "%":
+                if is_num(lv) and is_num(rv) and rv != 0:
+                    return lv % rv
+            elif op == "**":
+                if is_num(lv) and is_num(rv):   return lv ** rv
+            elif op == "==":  return lv == rv
+            elif op == "!=":  return lv != rv
+            elif op == "<":
+                if (is_num(lv) and is_num(rv)) or (isinstance(lv, str) and isinstance(rv, str)):
+                    return lv < rv
+            elif op == "<=":
+                if (is_num(lv) and is_num(rv)) or (isinstance(lv, str) and isinstance(rv, str)):
+                    return lv <= rv
+            elif op == ">":
+                if (is_num(lv) and is_num(rv)) or (isinstance(lv, str) and isinstance(rv, str)):
+                    return lv > rv
+            elif op == ">=":
+                if (is_num(lv) and is_num(rv)) or (isinstance(lv, str) and isinstance(rv, str)):
+                    return lv >= rv
+            elif op == "and": return lv if not lv else rv
+            elif op == "or":  return lv if lv else rv
+        except (TypeError, ValueError, OverflowError):
+            pass
+        return None
+
+    def lower_UnaryOpNode(self, node) -> "HirUnaryOp | HirLiteral":
+        op      = node.op_token.type.name
+        operand = self.lower(node.node)
+
+        # Constant fold unary minus and logical not on literals.
+        if isinstance(operand, HirLiteral):
+            v = operand.value
+            if op == "MINUS" and isinstance(v, (int, float)) and not isinstance(v, bool):
+                return HirLiteral(-v, _hir_type_of(-v))
+            if op == "NOT":
+                result = not bool(v)
+                return HirLiteral(result, HIR_BOOL)
+
+        # Map token type name to operator string for HirUnaryOp.
+        op_str = {
+            "MINUS": "-",
+            "NOT":   "not",
+        }.get(op, node.op_token.value)
+        return HirUnaryOp(op=op_str, operand=operand)
 
     # ── Control flow ──────────────────────────────────────────────────────────
 
