@@ -514,15 +514,55 @@ class LLVMCodeGen:
         self._continue_bb = prev_continue
 
     def _gen_HirReturn(self, node: HirReturn) -> None:
+        is_main = (self._func.function_type.return_type == self.i32)
+
+        # Emit a tail call when returning the result of a user-function call
+        # in a non-main function.  This lets LLVM's TCO pass eliminate the frame.
+        if not is_main and node.value is not None and isinstance(node.value, HirCall):
+            val = self._gen_tail_call(node.value)
+            if val is not None:
+                self._builder.ret(val)
+                return
+
         val = self.gen(node.value) if node.value is not None else self._null_val()
-        # main returns i32; all other functions return val_t
-        if self._func.function_type.return_type == self.i32:
+        if is_main:
             # Extract the integer data field as the exit code
             data = self._builder.extract_value(val, 2)
             code = self._builder.trunc(data, self.i32)
             self._builder.ret(code)
         else:
             self._builder.ret(val)
+
+    def _gen_tail_call(self, node: HirCall) -> Optional[ir.Value]:
+        """Emit a HirCall in tail position with the musttail / tail attribute.
+
+        Returns the call ir.Value so the caller can emit ``ret`` immediately
+        after, or None if the call was not to a user-defined function (runtime
+        calls are emitted normally via _rt_call and returned as-is).
+        """
+        args = [self.gen(a) for a in node.args]
+
+        if node.func in self._user_funcs:
+            fn          = self._user_funcs[node.func]
+            param_count = len(fn.function_type.args)
+            padded      = list(args)
+            while len(padded) < param_count:
+                padded.append(self._null_val())
+            call = self._builder.call(fn, padded[:param_count])
+            # musttail: LLVM *must* eliminate the call frame.  Valid only when
+            # callee signature == caller signature (guaranteed for self-recursion
+            # since all Luz functions return val_t and take val_t args).
+            # For calls to other user functions we use `tail` as a hint.
+            call.tail = 'musttail' if fn is self._func else 'tail'
+            return call
+
+        # Runtime call — fall through to normal generation so _rt_call handles
+        # the Windows ABI wrappers correctly.
+        rt_name = self._BUILTIN_RT.get(node.func)
+        if rt_name and rt_name in self._runtime:
+            return self._rt_call(rt_name, args)
+
+        return None
 
     def _gen_HirBreak(self, _node) -> None:
         if self._break_bb:
@@ -575,6 +615,17 @@ class LLVMCodeGen:
         # Restore outer state
         (self._builder, self._func, self._scope_stack,
          self._break_bb, self._continue_bb) = saved
+
+        # Store a luz_value_t{TAG_FUNCTION, 0, fn_ptr} in the outer scope so
+        # that HirLoad(name) returns a callable function value.  This enables
+        # functions assigned to variables and passed as arguments.
+        if node.name and self._scope_stack:
+            fn_as_ptr = self._builder.bitcast(fn, self.ptr)
+            fn_i64    = self._builder.ptrtoi(fn_as_ptr, self.i64)
+            func_val  = self._build_val(ir.Constant(self.i32, self.TAG_FUNCTION), fn_i64)
+            slot      = self._alloca(node.name)
+            self._builder.store(func_val, slot)
+            self._define(node.name, slot)
 
         return fn
 
@@ -639,9 +690,26 @@ class LLVMCodeGen:
         return self._null_val()
 
     def _gen_HirExprCall(self, node: HirExprCall) -> ir.Value:
-        # Indirect calls (function stored in a variable) require a trampoline;
-        # not yet supported — callee is discarded, return null.
-        return self._null_val()
+        args = [self.gen(a) for a in node.args]
+
+        # Fast path: if the callee is a load of a name we already compiled,
+        # call it directly (avoids the ptrtoi/inttoptr round-trip).
+        if isinstance(node.callee, HirLoad) and node.callee.name in self._user_funcs:
+            fn          = self._user_funcs[node.callee.name]
+            param_count = len(fn.function_type.args)
+            padded      = list(args)
+            while len(padded) < param_count:
+                padded.append(self._null_val())
+            return self._builder.call(fn, padded[:param_count])
+
+        # General indirect call: callee is an arbitrary expression that
+        # evaluates to a luz_value_t with TAG_FUNCTION.  Extract the function
+        # pointer from the 64-bit data field and call it indirectly.
+        callee_val = self.gen(node.callee)
+        fn_i64     = self._builder.extract_value(callee_val, 2)
+        ftype      = ir.FunctionType(self.val_t, [self.val_t] * len(args))
+        fn_ptr     = self._builder.inttoptr(fn_i64, ir.PointerType(ftype))
+        return self._builder.call(fn_ptr, args)
 
     # ── Collections ───────────────────────────────────────────────────────────
 

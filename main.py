@@ -91,6 +91,70 @@ def _build_hir(code, filename):
     return Lowering().lower_program(ast)
 
 
+def _dump_node(node, indent=0):
+    """Recursively pretty-print an AST or HIR node."""
+    from luz.tokens import Token
+    pad = "  " * indent
+    if node is None:
+        return f"{pad}null"
+    if isinstance(node, bool):
+        return f"{pad}{node!r}"
+    if isinstance(node, (int, float, str)):
+        return f"{pad}{node!r}"
+    if isinstance(node, Token):
+        return f"{pad}Token({node.type.name}, {node.value!r})"
+    if isinstance(node, list):
+        if not node:
+            return f"{pad}[]"
+        lines = [f"{pad}["]
+        for item in node:
+            lines.append(_dump_node(item, indent + 1))
+        lines.append(f"{pad}]")
+        return "\n".join(lines)
+    if isinstance(node, dict):
+        if not node:
+            return f"{pad}{{}}"
+        lines = [f"{pad}{{"]
+        for k, v in node.items():
+            lines.append(f"{pad}  {k!r}:")
+            lines.append(_dump_node(v, indent + 2))
+        lines.append(f"{pad}}}")
+        return "\n".join(lines)
+    # AST / HIR object: show class name + attributes
+    cls  = type(node).__name__
+    data = vars(node) if hasattr(node, "__dict__") else {}
+    if not data:
+        return f"{pad}{cls}()"
+    lines = [f"{pad}{cls}("]
+    for k, v in data.items():
+        child = _dump_node(v, indent + 1)
+        if "\n" not in child:
+            lines.append(f"{pad}  {k} = {child.strip()}")
+        else:
+            lines.append(f"{pad}  {k} =")
+            lines.append(child)
+    lines.append(f"{pad})")
+    return "\n".join(lines)
+
+
+def emit_ast(filename):
+    """Print the AST produced by the parser for a .luz file."""
+    code   = _load_source(filename)
+    lexer  = Lexer(code)
+    tokens = lexer.get_tokens()
+    parser = Parser(tokens)
+    ast    = parser.parse()
+    print(_dump_node(ast))
+
+
+def emit_hir(filename):
+    """Print the HIR (after lowering) for a .luz file."""
+    import pprint
+    code = _load_source(filename)
+    hir  = _build_hir(code, filename)
+    pprint.pprint(hir, width=120)
+
+
 def emit_ir(filename):
     """Print the LLVM IR generated from a .luz file."""
     try:
@@ -162,6 +226,16 @@ def main():
     # --check <file>  (VS Code extension)
     if args and args[0] == '--check' and len(args) >= 2:
         check(args[1])
+        return
+
+    # --emit-ast <file>
+    if args and args[0] == '--emit-ast' and len(args) >= 2:
+        emit_ast(args[1])
+        return
+
+    # --emit-hir <file>
+    if args and args[0] == '--emit-hir' and len(args) >= 2:
+        emit_hir(args[1])
         return
 
     # --emit-ir <file>
