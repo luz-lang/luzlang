@@ -5,6 +5,55 @@ Format: `## [version] - YYYY-MM-DD` followed by categorized entries.
 
 ---
 
+## [1.19.0] - 2026-04-12
+
+### Added
+
+**Compiler pipeline (interpreter → native executable)**
+- `--compile <file> [-o output]` CLI flag: compiles a `.luz` file to a native executable via LLVM IR → object file → linker
+- `--emit-ir <file>` CLI flag: prints the generated LLVM IR to stdout
+- `--run <file>` CLI flag: compiles to a temporary executable, runs it, then deletes the binary
+- `--emit-ast <file>` CLI flag: prints the full AST (class names + fields) produced by the parser for debugging
+- `--emit-hir <file>` CLI flag: prints the lowered HIR using dataclass reprs for debugging
+- HIR (High-level Intermediate Representation) lowering pass in `luz/hir.py` — 27 node types that desugar the AST into a flat, compiler-friendly representation before code generation; desugaring includes: `for` → while loop, `for x in list` → index-based while, `switch/case` → if/elif/else, `match` → equality chain, `x ?? y` → null check, `a if cond else b` → ternary if, f-strings → string concatenations
+- LLVM IR code generator in `luz/codegen.py` — lowers HIR to LLVM IR via llvmlite; all values are represented uniformly as `luz_value_t {i32 tag, i32 pad, i64 data}` matching the C runtime ABI
+- Native C runtime library in `luz/runtime/` — implements the full Luz type system and 40+ builtin functions as C functions: `luz_runtime.h` (tagged union, SSO strings, dynamic arrays, open-addressing hash table, vtable objects, setjmp/longjmp exceptions), `luz_runtime.c` (ARC retain/release, all data structure operations, builtins), dynamic dispatch helpers in `luz_rt_ops.c`
+- Tail call optimization (TCO) in the compiler: tail-position calls to user functions are marked `musttail` (self-recursive) or `tail` (cross-function); the LLVM TCO pass then eliminates the call frame, enabling stack-safe deep recursion in compiled mode
+- Indirect calls and function-pointer support in compiled mode: `_gen_HirExprCall` now stores function pointers in `luz_value_t{TAG_FUNCTION}` and performs real indirect calls via `inttoptr`; functions stored in variables, passed as arguments, or returned from other functions work correctly under `--compile`
+
+**Type checker**
+- Generic collection types `list[T]` and `dict[K, V]` are now enforced by the type checker — element types are validated on assignment and on function call arguments/return values
+- Definite assignment analysis: raises `UninitializedFault` for variables that may be read before being written on all control flow paths; `if` without `else` does not guarantee assignment, `if/else` propagates guaranteed names to the parent scope, `while`/`for` loop bodies are not guaranteed
+
+**HIR optimizer**
+- Constant folding in the HIR lowering pass: literal binary expressions (`3 + 4`, `"hello" + " world"`, `not false`) and unary expressions (`-5`) are evaluated at compile time in `lower_BinOpNode` / `lower_UnaryOpNode` and replaced with a single `HirLiteral`, eliminating the runtime call entirely
+
+**Standard library**
+- `luz-func` — functional programming utilities (`import "func"`):
+  - `higher.luz`: `map`, `filter`, `reduce`, `each`, `flat_map`, `zip_with`, `take_while`, `drop_while`, `count_if`, `find_first`, `group_by`
+  - `compose.luz`: `identity`, `constant`, `compose`, `compose3`, `pipe`, `flip`, `negate`, `all_of`, `any_of`
+  - `partial.luz`: `partial`, `partial2`, `once`, `memoize`
+
+### Fixed
+
+- `in` and `not in` operators on dicts now work correctly — previously only lists and strings were supported
+- Unary `+` operator is now accepted (it is a no-op, like in most languages)
+- `instanceof()` now works correctly with struct instances
+- `break`, `continue`, and `return` used outside their valid scope now raise the proper Luz error instead of leaking a Python exception
+- `sort()` on a mixed-type list (e.g. `[3, "a", 1]`) now raises `TypeViolationFault` instead of leaking an internal Python `TypeError`
+- Type checker: `string * int` and `int * string` are now accepted as valid string repetition — previously the type checker rejected them even though the interpreter handled them correctly
+- `pop()` error message is now more descriptive when called on an empty list
+- `path_ext()` in `luz-system` now returns only the file extension instead of the full basename
+- Windows x64 ABI mismatch in `--compile`: added pointer-wrapped `_pw` shims for all runtime functions that pass or return `luz_value_t` by value, so LLVM-generated code and MinGW-compiled C agree on the struct calling convention; `lower_BinOpNode` in `hir.py` was also fixed where a missing `op` field caused compiled arithmetic to always output null
+- C runtime: replaced GCC-specific `__attribute__((noreturn))` with a portable `LUZ_NORETURN` macro that falls back gracefully on MSVC and other compilers
+
+### Performance
+
+- Lexer: identifier and keyword matching now uses `frozenset` for O(1) lookups; string token accumulation uses list+join instead of repeated string concatenation — measurably faster on large source files
+- Compiler: LLVM middle-end optimization pipeline now runs before native object emission — applies SROA/mem2reg (promotes alloca/store/load triples to SSA registers), instruction combining, CFG simplification, dead store elimination, aggressive DCE, constant merging, and global optimization; at `-O2` also applies tail call elimination, jump threading, and memcpy optimization
+
+---
+
 ## [1.18.0] - 2026-04-03
 
 ### Added
