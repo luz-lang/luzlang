@@ -1,0 +1,122 @@
+# higher.luz — Higher-order functions for collections
+#
+# All functions are pure (no side effects except `each`).
+# Functions that receive a callable use ExprCallNode under the hood,
+# so they work with named functions, lambdas, and bound methods alike.
+
+# map(lst, func) — apply func to every element, return new list.
+function map(lst, func) {
+    result = []
+    for item in lst {
+        append(result, func(item))
+    }
+    return result
+}
+
+# filter(lst, pred) — keep only elements for which pred returns true.
+function filter(lst, pred) {
+    result = []
+    for item in lst {
+        if pred(item) { append(result, item) }
+    }
+    return result
+}
+
+# reduce(lst, func, init) — fold lst left-to-right using func(acc, item).
+# Returns init if lst is empty.
+function reduce(lst, func, init) {
+    acc = init
+    for item in lst {
+        acc = func(acc, item)
+    }
+    return acc
+}
+
+# each(lst, func) — call func on every element for side effects.
+# Returns null.
+function each(lst, func) {
+    for item in lst {
+        func(item)
+    }
+}
+
+# flat_map(lst, func) — map then flatten one level.
+# func must return a list for each element.
+function flat_map(lst, func) {
+    result = []
+    for item in lst {
+        sub = func(item)
+        for x in sub {
+            append(result, x)
+        }
+    }
+    return result
+}
+
+# zip_with(a, b, func) — apply func(a[i], b[i]) pairwise.
+# Stops at the shorter list.
+function zip_with(a, b, func) {
+    result = []
+    i = 0
+    while i < len(a) and i < len(b) {
+        append(result, func(a[i], b[i]))
+        i += 1
+    }
+    return result
+}
+
+# take_while(lst, pred) — return elements from the front while pred is true.
+function take_while(lst, pred) {
+    result = []
+    for item in lst {
+        if not pred(item) { break }
+        append(result, item)
+    }
+    return result
+}
+
+# drop_while(lst, pred) — skip elements from the front while pred is true,
+# then return the rest.
+function drop_while(lst, pred) {
+    dropping = true
+    result = []
+    for item in lst {
+        if dropping and pred(item) { continue }
+        dropping = false
+        append(result, item)
+    }
+    return result
+}
+
+# count_if(lst, pred) — count how many elements satisfy pred.
+function count_if(lst, pred) {
+    count = 0
+    for item in lst {
+        if pred(item) { count += 1 }
+    }
+    return count
+}
+
+# find_first(lst, pred) — return the first element satisfying pred,
+# or null if none is found.
+function find_first(lst, pred) {
+    for item in lst {
+        if pred(item) { return item }
+    }
+    return null
+}
+
+# group_by(lst, key_func) — partition lst into a dict of lists.
+# Elements that produce the same key_func result are grouped together.
+# Dict keys are the string representation of each group key.
+function group_by(lst, key_func) {
+    result = {}
+    for item in lst {
+        k = to_str(key_func(item))
+        if not result.contains(k) {
+            result[k] = []
+        }
+        append(result[k], item)
+    }
+    return result
+}

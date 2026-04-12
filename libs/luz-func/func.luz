@@ -1,0 +1,29 @@
+# func.luz — Luz Functional Programming Library v1.0.0
+# Entry point: imports all submodules.
+#
+# Usage:
+#   import "func"
+#
+#   # Collection HOFs
+#   doubled = map([1, 2, 3], fn(x) => x * 2)          # [2, 4, 6]
+#   evens   = filter([1,2,3,4], fn(x) => x % 2 == 0)  # [2, 4]
+#   total   = reduce([1,2,3,4], fn(a,b) => a+b, 0)     # 10
+#
+#   # Composition
+#   inc    = fn(x) => x + 1
+#   double = fn(x) => x * 2
+#   h      = compose(double, inc)   # h(3) → 8
+#   pipe(3, inc, double, inc)       # → 9
+#
+#   # Partial application
+#   add10 = partial(fn(a, b) => a + b, 10)
+#   add10(5)                        # → 15
+#
+#   # Memoization
+#   slow_square = memoize(fn(x) => x * x)
+#   slow_square(7)                  # computed: 49
+#   slow_square(7)                  # from cache: 49
+
+import "libs/luz-func/higher.luz"
+import "libs/luz-func/compose.luz"
+import "libs/luz-func/partial.luz"

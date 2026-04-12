@@ -1,0 +1,64 @@
+# compose.luz — Function composition and pipeline utilities
+
+# identity(x) — returns x unchanged.  Useful as a neutral element
+# in compose chains and as a default transform.
+function identity(x) {
+    return x
+}
+
+# constant(val) — returns a function that always returns val,
+# ignoring its argument.
+function constant(val) {
+    return fn(_x) => val
+}
+
+# compose(f, g) — returns h where h(x) = f(g(x)).
+# Applies right-to-left: compose(double, inc)(3) → double(inc(3)) → 8.
+function compose(f, g) {
+    return fn(x) => f(g(x))
+}
+
+# compose3(f, g, h) — three-function composition.
+# compose3(f, g, h)(x) = f(g(h(x))).
+function compose3(f, g, h) {
+    return fn(x) => f(g(h(x)))
+}
+
+# pipe(val, ...fns) — apply a sequence of functions left-to-right.
+# pipe(x, f, g, h) = h(g(f(x))).
+# With zero functions returns val unchanged.
+function pipe(val, ...fns) {
+    result = val
+    for f in fns {
+        result = f(result)
+    }
+    return result
+}
+
+# flip(func) — swap the first two arguments of a two-argument function.
+# flip(f)(a, b) = f(b, a).
+function flip(func) {
+    return fn(a, b) => func(b, a)
+}
+
+# negate(pred) — invert a boolean predicate.
+# negate(is_even)(3) → true.
+function negate(pred) {
+    return fn(x) => not pred(x)
+}
+
+# all_of(preds, x) — true if x satisfies every predicate in preds.
+function all_of(preds, x) {
+    for p in preds {
+        if not p(x) { return false }
+    }
+    return true
+}
+
+# any_of(preds, x) — true if x satisfies at least one predicate in preds.
+function any_of(preds, x) {
+    for p in preds {
+        if p(x) { return true }
+    }
+    return false
+}

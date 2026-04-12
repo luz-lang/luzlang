@@ -1,0 +1,5 @@
+{
+    "name": "func",
+    "version": "1.0.0",
+    "description": "Functional programming utilities: map, filter, reduce, compose, pipe, partial application, and more"
+}

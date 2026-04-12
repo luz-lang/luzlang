@@ -1,0 +1,45 @@
+# partial.luz — Partial application and memoization
+
+# partial(func, a) — bind the first argument of a function.
+# Returns a new function that takes one more argument.
+# partial(add, 10)(5) → add(10, 5) → 15.
+function partial(func, a) {
+    return fn(x) => func(a, x)
+}
+
+# partial2(func, a, b) — bind the first two arguments.
+# Returns a new function that takes one more argument.
+# partial2(clamp, 0, 100)(150) → clamp(0, 100, 150) → 100.
+function partial2(func, a, b) {
+    return fn(x) => func(a, b, x)
+}
+
+# once(func) — return a wrapper that calls func only on the first
+# invocation and returns that same result on all subsequent calls.
+#
+# Note: mutable closure state is kept in a dict so that index-assignments
+# (state["key"] = val) cross the function-scope boundary correctly.
+function once(func) {
+    state = {"called": false, "stored": null}
+    return fn(x) {
+        if not state["called"] {
+            state["stored"] = func(x)
+            state["called"] = true
+        }
+        return state["stored"]
+    }
+}
+
+# memoize(func) — return a version of func that caches results by
+# the string representation of its argument.  Only suitable for
+# pure, single-argument functions with serialisable inputs.
+function memoize(func) {
+    cache = {}
+    return fn(x) {
+        key = to_str(x)
+        if cache.contains(key) { return cache[key] }
+        result = func(x)
+        cache[key] = result
+        return result
+    }
+}
