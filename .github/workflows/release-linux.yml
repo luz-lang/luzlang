@@ -9,6 +9,8 @@ jobs:
   build-linux:
     runs-on: ubuntu-22.04
     container: python:3.11-slim-bullseye
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout code
