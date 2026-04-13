@@ -783,6 +783,18 @@ luz_value_t luz_builtin_typeof(luz_value_t v) {
     return LUZ_STR_VAL(luz_str_from_cstr(luz_typeof(v)));
 }
 
+luz_value_t luz_builtin_instanceof(luz_value_t v, luz_value_t cls_id) {
+    if (v.type != LUZ_OBJECT)
+        return LUZ_BOOL_VAL(0);
+    if (cls_id.type != LUZ_INT) {
+        luz_raise(LUZ_STR_VAL(luz_str_from_cstr(
+            "TypeError: instanceof() second argument must be a class id (int)")));
+    }
+    uint32_t id = (uint32_t)cls_id.i;
+    int result = v.obj->vtable && v.obj->vtable->class_id == id;
+    return LUZ_BOOL_VAL(result);
+}
+
 luz_value_t luz_builtin_len(luz_value_t v) {
     switch (v.type) {
         case LUZ_STRING: return LUZ_INT_VAL((int64_t)v.str->len);

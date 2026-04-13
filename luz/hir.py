@@ -191,6 +191,18 @@ class HirList:
 
 
 @dataclass
+class HirTuple:
+    """Multi-return tuple literal: (e0, e1, …).
+
+    Distinct from HirList: the interpreter treats this like a list, but the
+    compiler emits a stack-allocated LLVM struct { val_t x N } — no heap
+    allocation.  Used exclusively for `return a, b` and destructure RHS.
+    """
+    elements: list  # list[HirNode]
+    type: str = HIR_LIST
+
+
+@dataclass
 class HirDict:
     """Dict literal: {k0: v0, k1: v1, …}"""
     pairs: list  # list[(HirNode, HirNode)]
@@ -205,6 +217,7 @@ class HirFuncDef:
     return_type: str
     body: HirBlock
     is_variadic: bool = False
+    is_multi_return: bool = False  # True if any return yields a HirTuple
 
 
 @dataclass
@@ -305,6 +318,24 @@ class Lowering:
                 result.append(lowered)
         return HirBlock(result)
 
+    def _analyze_multi_return(self, block: HirBlock) -> bool:
+        """Return True if any HirReturn in block (recursively) yields a HirTuple."""
+        for stmt in block.stmts:
+            if isinstance(stmt, HirReturn) and isinstance(stmt.value, HirTuple):
+                return True
+            if isinstance(stmt, HirIf):
+                if self._analyze_multi_return(stmt.then_block):
+                    return True
+                if stmt.else_block and self._analyze_multi_return(stmt.else_block):
+                    return True
+            if isinstance(stmt, HirWhile):
+                if self._analyze_multi_return(stmt.block):
+                    return True
+            if isinstance(stmt, HirBlock):
+                if self._analyze_multi_return(stmt):
+                    return True
+        return False
+
     # ── Literals ──────────────────────────────────────────────────────────────
 
     def lower_NumberNode(self, node) -> HirLiteral:
@@ -328,9 +359,10 @@ class Lowering:
     def lower_DictNode(self, node) -> HirDict:
         return HirDict([(self.lower(k), self.lower(v)) for k, v in node.pairs])
 
-    def lower_TupleNode(self, node) -> HirList:
-        # Tuples are represented as lists in HIR (no tuple type in Luz runtime)
-        return HirList([self.lower(e) for e in node.elements])
+    def lower_TupleNode(self, node) -> HirTuple:
+        # Tuples use HirTuple so the compiler can emit a stack-allocated struct.
+        # The interpreter treats HirTuple the same as HirList at runtime.
+        return HirTuple([self.lower(e) for e in node.elements])
 
     # ── Format strings → concat chain ─────────────────────────────────────────
 
@@ -378,9 +410,17 @@ class Lowering:
         )
 
     def lower_DestructureAssignNode(self, node) -> HirBlock:
+        rhs = self.lower(node.value_node)
+        if isinstance(rhs, HirTuple) and len(rhs.elements) == len(node.var_tokens):
+            # Static tuple: unpack elements directly — no runtime list allocation.
+            return HirBlock([
+                HirAssign(tok.value, rhs.elements[i])
+                for i, tok in enumerate(node.var_tokens)
+            ])
+        # Dynamic value: use runtime list indexing.
         # [a, b, c] = expr  →  tmp = expr; a = tmp[0]; b = tmp[1]; c = tmp[2]
         tmp = self._fresh("__dest")
-        stmts = [HirLet(tmp, HIR_LIST, self.lower(node.value_node))]
+        stmts = [HirLet(tmp, HIR_LIST, rhs)]
         for i, tok in enumerate(node.var_tokens):
             stmts.append(HirAssign(
                 tok.value,
@@ -684,30 +724,36 @@ class Lowering:
         for i, tok in enumerate(node.arg_tokens):
             ptype = (types[i] if i < len(types) else None) or HIR_UNKNOWN
             params.append((tok.value, ptype))
+        body = self._block(node.block)
         return HirFuncDef(
             name=node.name_token.value if node.name_token else None,
             params=params,
             return_type=node.return_type or HIR_UNKNOWN,
-            body=self._block(node.block),
+            body=body,
             is_variadic=bool(node.variadic),
+            is_multi_return=self._analyze_multi_return(body),
         )
 
     def lower_LambdaNode(self, node) -> HirFuncDef:
         params = [(t.value, HIR_UNKNOWN) for t in node.param_tokens]
+        body   = HirBlock([HirReturn(self.lower(node.expr_node))])
         return HirFuncDef(
             name=None,
             params=params,
             return_type=HIR_UNKNOWN,
-            body=HirBlock([HirReturn(self.lower(node.expr_node))]),
+            body=body,
+            is_multi_return=self._analyze_multi_return(body),
         )
 
     def lower_AnonFuncNode(self, node) -> HirFuncDef:
         params = [(t.value, HIR_UNKNOWN) for t in node.param_tokens]
+        body   = self._block(node.block)
         return HirFuncDef(
             name=None,
             params=params,
             return_type=HIR_UNKNOWN,
-            body=self._block(node.block),
+            body=body,
+            is_multi_return=self._analyze_multi_return(body),
         )
 
     def lower_ReturnNode(self, node) -> HirReturn:

@@ -39,7 +39,7 @@ from .hir import (
     HirCall, HirExprCall, HirBlock, HirIf, HirWhile, HirReturn,
     HirBreak, HirContinue, HirFuncDef, HirClassDef, HirStructDef,
     HirFieldLoad, HirFieldStore, HirIndex, HirIndexStore,
-    HirList, HirDict, HirImport, HirAttemptRescue, HirAlert, HirPass,
+    HirList, HirTuple, HirDict, HirImport, HirAttemptRescue, HirAlert, HirPass,
 )
 
 
@@ -516,6 +516,12 @@ class LLVMCodeGen:
     def _gen_HirReturn(self, node: HirReturn) -> None:
         is_main = (self._func.function_type.return_type == self.i32)
 
+        # Multi-return: `return a, b` — emit a stack-allocated struct { val_t x N }.
+        if not is_main and isinstance(node.value, HirTuple):
+            struct_val = self._gen_HirTuple(node.value)
+            self._builder.ret(struct_val)
+            return
+
         # Emit a tail call when returning the result of a user-function call
         # in a non-main function.  This lets LLVM's TCO pass eliminate the frame.
         if not is_main and node.value is not None and isinstance(node.value, HirCall):
@@ -580,11 +586,43 @@ class LLVMCodeGen:
     def _gen_HirFuncDef(self, node: HirFuncDef) -> ir.Function:
         return self._compile_func(node)
 
+    def _tuple_ret_type(self, arity: int) -> ir.LiteralStructType:
+        """Return the LLVM struct type used for a multi-return of *arity* values."""
+        return ir.LiteralStructType([self.val_t] * arity)
+
+    def _get_multi_return_arity(self, body: 'HirBlock') -> int:
+        """Walk body to find the first HirReturn(HirTuple) and return its arity."""
+        for stmt in body.stmts:
+            if isinstance(stmt, HirReturn) and isinstance(stmt.value, HirTuple):
+                return len(stmt.value.elements)
+            if isinstance(stmt, HirIf):
+                n = self._get_multi_return_arity(stmt.then_block)
+                if n > 0:
+                    return n
+                if stmt.else_block:
+                    n = self._get_multi_return_arity(stmt.else_block)
+                    if n > 0:
+                        return n
+            if isinstance(stmt, HirWhile):
+                n = self._get_multi_return_arity(stmt.block)
+                if n > 0:
+                    return n
+            if isinstance(stmt, HirBlock):
+                n = self._get_multi_return_arity(stmt)
+                if n > 0:
+                    return n
+        return 0
+
     def _compile_func(self, node: HirFuncDef) -> ir.Function:
         param_types = [self.val_t] * len(node.params)
-        ftype       = ir.FunctionType(self.val_t, param_types)
-        name        = node.name or self.module.get_unique_name("lambda")
-        fn          = ir.Function(self.module, ftype, name=name)
+        if node.is_multi_return:
+            arity    = self._get_multi_return_arity(node.body)
+            ret_type = self._tuple_ret_type(arity) if arity > 0 else self.val_t
+        else:
+            ret_type = self.val_t
+        ftype = ir.FunctionType(ret_type, param_types)
+        name  = node.name or self.module.get_unique_name("lambda")
+        fn    = ir.Function(self.module, ftype, name=name)
         if node.name:
             self._user_funcs[node.name] = fn
 
@@ -720,6 +758,20 @@ class LLVMCodeGen:
             val = self.gen(elem)
             self._rt_call("luz_builtin_append", [lst, val])
         return lst
+
+    def _gen_HirTuple(self, node: HirTuple) -> ir.Value:
+        """Emit a stack-allocated LLVM struct { val_t x N } for multi-return.
+
+        In return position this struct is returned in registers (LLVM handles
+        small structs automatically).  No heap allocation occurs.
+        """
+        n        = len(node.elements)
+        struct_t = self._tuple_ret_type(n)
+        result   = ir.Constant(struct_t, ir.Undefined)
+        for i, elem in enumerate(node.elements):
+            val    = self.gen(elem)
+            result = self._builder.insert_value(result, val, i)
+        return result
 
     def _gen_HirDict(self, node: HirDict) -> ir.Value:
         n = ir.Constant(self.i32, len(node.pairs))

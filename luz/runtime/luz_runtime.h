@@ -192,6 +192,7 @@ luz_list_t *luz_dict_values(luz_dict_t *d);
 
 typedef struct luz_vtable {
     const char *class_name;
+    uint32_t    class_id;     /* unique id assigned at startup; 0 = anonymous */
     size_t      attr_count;
     const char **attr_names;  /* NULL-terminated array of attribute name strings */
     /* Method function pointers would be added per-class by the compiler. */
@@ -246,6 +247,7 @@ luz_value_t luz_builtin_to_bool(luz_value_t v);
 
 /* Introspection */
 luz_value_t luz_builtin_typeof(luz_value_t v);
+luz_value_t luz_builtin_instanceof(luz_value_t v, luz_value_t cls_id);
 luz_value_t luz_builtin_len(luz_value_t v);
 
 /* Math */
