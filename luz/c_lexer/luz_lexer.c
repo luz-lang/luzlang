@@ -92,6 +92,23 @@ static void skip_comment(CLexer* lex) {
 }
 
 
+/* skip_multiline_comment() discards everything between /# and #/.
+ * Called after the opening /# has already been consumed.
+ * Produces a fatal error message if EOF is reached before #/.            */
+static void skip_multiline_comment(CLexer* lex) {
+    while (current_char(lex) != '\0') {
+        if (current_char(lex) == '#' && peek_char(lex) == '/') {
+            advance(lex);   /* consume '#' */
+            advance(lex);   /* consume '/' */
+            return;
+        }
+        advance(lex);
+    }
+    /* EOF without closing #/ */
+    fprintf(stderr, "LexError: unterminated multi-line comment (missing '#/')\n");
+}
+
+
 static CToken make_token(TokenType type, int line, int col) {
     CToken t;
     t.type  = type;
@@ -601,6 +618,14 @@ CToken* lex_all(CLexer* lex, int* out_count) {
         /* Skip line comments */
         if (current_char(lex) == '#') {
             skip_comment(lex);
+            continue;
+        }
+
+        /* Skip multi-line comments /# ... #/ */
+        if (current_char(lex) == '/' && peek_char(lex) == '#') {
+            advance(lex);   /* consume '/' */
+            advance(lex);   /* consume '#' */
+            skip_multiline_comment(lex);
             continue;
         }
 

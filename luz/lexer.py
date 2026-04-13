@@ -132,6 +132,23 @@ class Lexer:
             self.advance()
         self.advance()
 
+    # skip_multiline_comment() discards everything between /# and #/.
+    # Nested multiline comments are NOT supported — the first #/ closes the block.
+    # Raises InvalidTokenFault if EOF is reached before the closing #/.
+    def skip_multiline_comment(self):
+        start_line = self.line; start_col = self.col
+        while self.current_char is not None:
+            if self.current_char == '#':
+                self.advance()
+                if self.current_char == '/':
+                    self.advance()  # consume the closing '/'
+                    return
+            else:
+                self.advance()
+        e = InvalidTokenFault("Unterminated multi-line comment (missing '#/')")
+        e.line = start_line; e.col = start_col
+        raise e
+
     # make_number() reads a sequence of digits and at most one decimal point,
     # then returns either an INT or FLOAT token depending on whether a '.' was
     # found. Also handles scientific notation (e.g. 1e5, 2.5e-3, 1E10).
@@ -306,12 +323,16 @@ class Lexer:
         self.advance()  # Consume closing '"'
         return Token(TokenType.FSTRING, ''.join(parts), line, col)
 
-    # make_slash() handles the ambiguity between '/' (division) and '//'
-    # (integer division).  After consuming the first '/', it peeks at the next
-    # character to decide which token to emit.
+    # make_slash() handles the ambiguity between '/' (division), '//' (integer
+    # division), and '/#' (multi-line comment opener).  After consuming the
+    # first '/', it peeks at the next character to decide which token to emit.
     def make_slash(self):
         line = self.line; col = self.col
         self.advance()  # Consume the first '/'
+        if self.current_char == '#':
+            self.advance()  # Consume the '#'
+            self.skip_multiline_comment()
+            return None     # No token — the comment is discarded
         if self.current_char == '/':
             self.advance()  # Consume the second '/'
             return Token(TokenType.IDIV, None, line, col)
@@ -456,7 +477,9 @@ class Lexer:
                 else:
                     tokens.append(Token(TokenType.MOD, None, line, col))
             elif self.current_char == '/':
-                tokens.append(self.make_slash())
+                tok = self.make_slash()
+                if tok is not None:
+                    tokens.append(tok)
 
             # Grouping / collection delimiters
             elif self.current_char == '(':
