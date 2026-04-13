@@ -1,7 +1,7 @@
 """
-luzc — Luz Compiler
+luzc -- Luz Compiler
 Usage:
-    luzc <file.luz> [-o output] [-O0|O1|O2|O3] [--emit-ir] [--emit-hir] [--emit-ast]
+    luzc <file.luz> [-o output] [-O0|-O1|-O2|-O3] [--emit-ir] [--emit-hir] [--emit-ast]
     luzc <file.luz> --run
     luzc --version
     luzc --help
@@ -9,37 +9,180 @@ Usage:
 
 import sys
 import os
+import re
 import argparse
 import subprocess
 
-# ── Version ───────────────────────────────────────────────────────────────────
-
 VERSION = "1.0.0"
 
-# ── Error formatting (GCC-style: file:line:col: error: message) ───────────────
+# ── Diagnostics engine ────────────────────────────────────────────────────────
+#
+# Produces GCC/Clang-style messages:
+#
+#   hello.luz:5:8: error: undeclared variable 'x'
+#       5 | write(x)
+#         |       ^
+#
+# Severities:
+#   error   -- fatal, compilation stops
+#   warning -- non-fatal (unused vars, etc.), compilation continues
+#   note    -- informational hint attached to a previous error
 
-def _fmt_error(filename, exc, label="error"):
-    line = getattr(exc, "line", None)
-    col  = getattr(exc, "col",  None)
-    msg  = getattr(exc, "message", str(exc))
+class Diagnostics:
+    """Collects and formats compiler diagnostics for a single source file."""
 
-    loc = filename
-    if line is not None:
-        loc += f":{line}"
-        if col is not None:
-            loc += f":{col}"
+    # LuzError subclass names -> severity override
+    # Anything not listed here defaults to "error"
+    _WARNINGS = {
+        "UnusedVariableFault",
+        "UnusedImportFault",
+    }
 
-    kind = type(exc).__name__.replace("Fault", "").replace("Exception", "")
-    return f"{loc}: {label}: [{kind}] {msg}"
+    # Class name -> human-readable label
+    # Built dynamically from CamelCase; override specific ones here
+    _LABEL_OVERRIDE = {
+        "ExpressionFault":      "invalid expression",
+        "UnexpectedTokenFault": "unexpected token",
+        "UnexpectedEOFault":    "unexpected end of file",
+        "InvalidTokenFault":    "invalid token",
+        "StructureFault":       "syntax error",
+        "ParseFault":           "syntax error",
+        "OperatorFault":        "operator error",
+        "TypeClashFault":       "type mismatch",
+        "TypeViolationFault":   "type error",
+        "TypeCheckFault":       "type error",
+        "CastFault":            "invalid cast",
+        "UndefinedSymbolFault": "undeclared identifier",
+        "DuplicateSymbolFault": "duplicate definition",
+        "ArityFault":           "wrong number of arguments",
+        "ArgumentFault":        "invalid argument",
+        "IndexFault":           "index out of range",
+        "ZeroDivisionFault":    "division by zero",
+        "UnusedVariableFault":  "unused variable",
+        "UnusedImportFault":    "unused import",
+        "ModuleNotFoundFault":  "module not found",
+        "ImportFault":          "import error",
+        "AttributeNotFoundFault": "attribute not found",
+        "InheritanceFault":     "invalid inheritance",
+        "UserFault":            "alert",
+    }
+
+    def __init__(self, filename: str, source: str):
+        self.filename      = filename
+        self._lines        = source.splitlines()
+        self.error_count   = 0
+        self.warning_count = 0
+
+    # ── Public API ─────────────────────────────────────────────────────────────
+
+    def report(self, exc, severity: str = None):
+        """Format and print a LuzError (or any exception) as a diagnostic."""
+        line = getattr(exc, "line", None)
+        col  = getattr(exc, "col",  None)
+        msg  = getattr(exc, "message", str(exc))
+        cls  = type(exc).__name__
+
+        if severity is None:
+            severity = "warning" if cls in self._WARNINGS else "error"
+
+        label = self._label(cls)
+        self._emit(line, col, severity, label, msg)
+
+    def report_typecheck(self, tc_err):
+        """Format a TypeCheckError object from luz.typechecker."""
+        line     = getattr(tc_err, "line",       None)
+        col      = getattr(tc_err, "col",        None)
+        msg      = getattr(tc_err, "message",    str(tc_err))
+        fault    = getattr(tc_err, "fault_kind", "TypeCheckFault")
+        severity = "warning" if "Unused" in fault else "error"
+        label    = self._label(fault)
+        self._emit(line, col, severity, label, msg)
+
+    def report_internal(self, exc):
+        """Format an unexpected Python exception as an internal compiler error."""
+        msg = f"internal compiler error: {type(exc).__name__}: {exc}"
+        print(f"luzc: {msg}", file=sys.stderr)
+        if os.environ.get("LUZC_DEBUG"):
+            import traceback
+            traceback.print_exc()
+        self.error_count += 1
+
+    def die(self, exc):
+        """Report a fatal error and exit immediately."""
+        self.report(exc)
+        self._summary_and_exit()
+
+    def die_internal(self, exc):
+        """Report an internal error and exit."""
+        self.report_internal(exc)
+        self._summary_and_exit()
+
+    def ok(self) -> bool:
+        return self.error_count == 0
+
+    def summary(self):
+        """Print the final error/warning count line (only if there were any)."""
+        parts = []
+        if self.error_count:
+            s = "s" if self.error_count != 1 else ""
+            parts.append(f"{self.error_count} error{s}")
+        if self.warning_count:
+            s = "s" if self.warning_count != 1 else ""
+            parts.append(f"{self.warning_count} warning{s}")
+        if parts:
+            print(f"luzc: {', '.join(parts)} generated.", file=sys.stderr)
+
+    # ── Internals ──────────────────────────────────────────────────────────────
+
+    def _emit(self, line, col, severity, label, msg):
+        loc = self.filename
+        if line is not None:
+            loc += f":{line}"
+            if col is not None:
+                loc += f":{col}"
+
+        print(f"{loc}: {severity}: {label}: {msg}", file=sys.stderr)
+
+        # Source context: the offending line + caret
+        ctx = self._context(line, col)
+        if ctx:
+            print(ctx, file=sys.stderr)
+
+        if severity == "warning":
+            self.warning_count += 1
+        else:
+            self.error_count += 1
+
+    def _context(self, line, col) -> str:
+        """Return the source line + caret indicator, or empty string."""
+        if line is None or line < 1 or line > len(self._lines):
+            return ""
+        src = self._lines[line - 1]
+        # Truncate very long lines for readability
+        display = src if len(src) <= 120 else src[:117] + "..."
+        num     = str(line)
+        pad     = " " * len(num)
+        out     = f"  {num} | {display}\n"
+        out    += f"  {pad} | "
+        if col is not None and 1 <= col <= len(src) + 1:
+            out += " " * (col - 1) + "^"
+        return out
+
+    def _label(self, class_name: str) -> str:
+        if class_name in self._LABEL_OVERRIDE:
+            return self._LABEL_OVERRIDE[class_name]
+        # Strip "Fault" / "Error" / "Exception" suffix, then CamelCase -> words
+        name = re.sub(r"(Fault|Error|Exception)$", "", class_name)
+        return re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name).lower()
+
+    def _summary_and_exit(self):
+        self.summary()
+        sys.exit(1)
 
 
-def _die(filename, exc, label="error"):
-    print(_fmt_error(filename, exc, label), file=sys.stderr)
-    sys.exit(1)
+# ── Pipeline stages ───────────────────────────────────────────────────────────
 
-# ── Pipeline helpers ──────────────────────────────────────────────────────────
-
-def _load(filename):
+def _load(filename: str) -> str:
     try:
         with open(filename, "r", encoding="utf-8") as f:
             return f.read()
@@ -51,45 +194,52 @@ def _load(filename):
         sys.exit(1)
 
 
-def _lex_parse(source, filename):
+def _lex_parse(source: str, diag: Diagnostics):
     from luz.lexer  import Lexer
     from luz.parser import Parser
 
     try:
         tokens = Lexer(source).get_tokens()
     except Exception as e:
-        _die(filename, e)
+        diag.die(e)
 
     try:
         return Parser(tokens).parse()
     except Exception as e:
-        _die(filename, e)
+        diag.die(e)
 
 
-def _typecheck(ast, filename):
+def _typecheck(ast, diag: Diagnostics):
     from luz.typechecker import TypeChecker
+
     errors = TypeChecker().check(ast)
-    if errors:
-        for e in errors:
-            # TypeChecker returns formatted strings already
-            print(f"{filename}: error: {e}", file=sys.stderr)
-        sys.exit(1)
+    if not errors:
+        return
+
+    for e in errors:
+        diag.report_typecheck(e)
+
+    if not diag.ok():
+        diag._summary_and_exit()
 
 
-def _lower(ast, filename):
+def _lower(ast, diag: Diagnostics):
     from luz.hir import Lowering
     try:
         return Lowering().lower_program(ast)
     except Exception as e:
-        _die(filename, e)
+        diag.die(e)
 
 
-def _codegen(hir, filename):
+def _codegen(hir, diag: Diagnostics):
     try:
         from luz.codegen import LLVMCodeGen
     except ImportError:
-        print("luzc: error: llvmlite is not installed.\n"
-              "       Run: pip install llvmlite", file=sys.stderr)
+        print(
+            "luzc: error: llvmlite is not installed.\n"
+            "       Run: pip install llvmlite",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     try:
@@ -97,67 +247,82 @@ def _codegen(hir, filename):
         gen.gen_program(hir)
         return gen
     except Exception as e:
-        _die(filename, e)
+        # Codegen errors may be LuzErrors with location info,
+        # or plain Python exceptions (internal compiler bugs).
+        from luz.exceptions import LuzError
+        if isinstance(e, LuzError):
+            diag.die(e)
+        else:
+            diag.die_internal(e)
 
 
-def _build_pipeline(filename):
-    """Run the full pipeline up to codegen. Returns (ast, hir, gen)."""
+def _build_pipeline(filename: str):
+    """Full Lex->Parse->Typecheck->Lower->Codegen pipeline.
+    Returns (ast, hir, gen, diag)."""
     source = _load(filename)
-    ast    = _lex_parse(source, filename)
-    _typecheck(ast, filename)
-    hir    = _lower(ast, filename)
-    gen    = _codegen(hir, filename)
-    return ast, hir, gen
+    diag   = Diagnostics(filename, source)
+    ast    = _lex_parse(source, diag)
+    _typecheck(ast, diag)
+    hir    = _lower(ast, diag)
+    gen    = _codegen(hir, diag)
+    return ast, hir, gen, diag
+
 
 # ── Commands ──────────────────────────────────────────────────────────────────
 
-def cmd_check(filename):
-    """Syntax + type check only (no codegen). Used by the VS Code extension."""
+def cmd_check(filename: str):
+    """Syntax + type check only. Outputs JSON for editor integration."""
     import json
     source = _load(filename)
+    out    = []
     try:
-        from luz.lexer  import Lexer
-        from luz.parser import Parser
+        from luz.lexer       import Lexer
+        from luz.parser      import Parser
+        from luz.typechecker import TypeChecker
         tokens = Lexer(source).get_tokens()
         ast    = Parser(tokens).parse()
-        from luz.typechecker import TypeChecker
-        errors = TypeChecker().check(ast)
-        if errors:
-            print(json.dumps([{"line": None, "message": str(e)} for e in errors]))
-        else:
-            print(json.dumps([]))
+        for e in TypeChecker().check(ast):
+            out.append({
+                "line":    getattr(e, "line",    None),
+                "col":     getattr(e, "col",     None),
+                "message": getattr(e, "message", str(e)),
+            })
     except Exception as e:
-        line = getattr(e, "line", None)
-        msg  = getattr(e, "message", str(e))
-        print(json.dumps([{"line": line, "message": msg}]))
+        out.append({
+            "line":    getattr(e, "line",    None),
+            "col":     getattr(e, "col",     None),
+            "message": getattr(e, "message", str(e)),
+        })
+    print(json.dumps(out))
 
 
-def cmd_emit_ast(filename):
+def cmd_emit_ast(filename: str):
     source = _load(filename)
-    ast    = _lex_parse(source, filename)
-    _dump(ast)
+    diag   = Diagnostics(filename, source)
+    ast    = _lex_parse(source, diag)
+    _dump_node(ast)
 
 
-def cmd_emit_hir(filename):
+def cmd_emit_hir(filename: str):
     import pprint
-    source = _load(filename)
-    ast    = _lex_parse(source, filename)
-    _typecheck(ast, filename)
-    hir    = _lower(ast, filename)
+    _, hir, _, _ = _build_pipeline(filename)
     pprint.pprint(hir, width=120)
 
 
-def cmd_emit_ir(filename):
-    _, _, gen = _build_pipeline(filename)
+def cmd_emit_ir(filename: str):
+    _, _, gen, _ = _build_pipeline(filename)
     print(str(gen.module))
 
 
-def cmd_compile(filename, output, opt_level, verbose):
-    """Compile to a native executable."""
+def cmd_compile(filename: str, output, verbose: bool):
     if verbose:
         print(f"luzc: compiling '{filename}'...")
 
-    _, _, gen = _build_pipeline(filename)
+    _, _, gen, diag = _build_pipeline(filename)
+
+    # Warnings don't stop compilation, but print the summary line
+    if diag.warning_count:
+        diag.summary()
 
     # Resolve output path
     if output is None:
@@ -171,10 +336,13 @@ def cmd_compile(filename, output, opt_level, verbose):
 
     try:
         gen.compile_to_exe(output)
-    except subprocess.CalledProcessError as e:
-        print(f"luzc: error: linking failed.\n"
-              f"       Make sure the runtime is compiled:\n"
-              f"         cd luz/runtime && make", file=sys.stderr)
+    except subprocess.CalledProcessError:
+        print(
+            "luzc: error: linking failed.\n"
+            "       Make sure the runtime is compiled:\n"
+            "         cd luz/runtime && make",
+            file=sys.stderr,
+        )
         sys.exit(1)
     except Exception as e:
         print(f"luzc: error: {e}", file=sys.stderr)
@@ -187,10 +355,13 @@ def cmd_compile(filename, output, opt_level, verbose):
         print(f"Compiled: {output}")
 
 
-def cmd_run(filename):
+def cmd_run(filename: str):
     """Compile + execute immediately, then delete the binary."""
     import tempfile
-    _, _, gen = _build_pipeline(filename)
+    _, _, gen, diag = _build_pipeline(filename)
+
+    if diag.warning_count:
+        diag.summary()
 
     suffix = ".exe" if sys.platform == "win32" else ""
     fd, tmp = tempfile.mkstemp(suffix=suffix)
@@ -201,17 +372,21 @@ def cmd_run(filename):
         result = subprocess.run([tmp], check=False)
         sys.exit(result.returncode)
     except subprocess.CalledProcessError:
-        print(f"luzc: error: linking failed.\n"
-              f"       Make sure the runtime is compiled:\n"
-              f"         cd luz/runtime && make", file=sys.stderr)
+        print(
+            "luzc: error: linking failed.\n"
+            "       Make sure the runtime is compiled:\n"
+            "         cd luz/runtime && make",
+            file=sys.stderr,
+        )
         sys.exit(1)
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
 
+
 # ── AST pretty-printer ────────────────────────────────────────────────────────
 
-def _dump(node, indent=0):
+def _dump_node(node, indent=0):
     from luz.tokens import Token
     pad = "  " * indent
     if node is None:
@@ -225,7 +400,7 @@ def _dump(node, indent=0):
     if isinstance(node, list):
         print(f"{pad}[")
         for item in node:
-            _dump(item, indent + 1)
+            _dump_node(item, indent + 1)
         print(f"{pad}]"); return
     cls  = type(node).__name__
     data = vars(node) if hasattr(node, "__dict__") else {}
@@ -234,8 +409,9 @@ def _dump(node, indent=0):
     print(f"{pad}{cls}(")
     for k, v in data.items():
         print(f"{pad}  {k} =")
-        _dump(v, indent + 2)
+        _dump_node(v, indent + 2)
     print(f"{pad})")
+
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
@@ -244,7 +420,7 @@ def main():
         prog="luzc",
         description="Luz compiler - compiles .luz source files to native executables.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
+        epilog="""\
 Examples:
   luzc hello.luz                  Compile to hello.exe (Windows) or hello (Linux/Mac)
   luzc hello.luz -o greet         Compile to greet.exe / greet
@@ -252,6 +428,9 @@ Examples:
   luzc hello.luz --emit-ir        Print LLVM IR to stdout
   luzc hello.luz --emit-hir       Print HIR to stdout
   luzc hello.luz --emit-ast       Print AST to stdout
+
+Environment:
+  LUZC_DEBUG=1                    Print full Python traceback on internal errors
 """,
     )
 
@@ -263,13 +442,13 @@ Examples:
     parser.add_argument("-o",
         metavar="output",
         dest="output",
-        help="Output binary name (default: same as source, no extension)")
+        help="Output binary name (default: source name without extension)")
 
     parser.add_argument("-O", "-O0", "-O1", "-O2", "-O3",
         dest="opt",
         metavar="level",
         default="2",
-        help="Optimization level (0-3, default 2)")
+        help="Optimization level 0-3 (default: 2)")
 
     parser.add_argument("--run",
         action="store_true",
@@ -277,7 +456,7 @@ Examples:
 
     parser.add_argument("--emit-ir",
         action="store_true",
-        help="Print LLVM IR instead of producing a binary")
+        help="Print LLVM IR to stdout instead of producing a binary")
 
     parser.add_argument("--emit-hir",
         action="store_true",
@@ -293,7 +472,7 @@ Examples:
 
     parser.add_argument("-v", "--verbose",
         action="store_true",
-        help="Print compilation steps")
+        help="Print each compilation step")
 
     parser.add_argument("--version",
         action="version",
@@ -307,7 +486,6 @@ Examples:
 
     filename = args.file
 
-    # Dispatch to the right command
     if args.check:
         cmd_check(filename)
     elif args.emit_ast:
@@ -319,7 +497,7 @@ Examples:
     elif args.run:
         cmd_run(filename)
     else:
-        cmd_compile(filename, args.output, args.opt, args.verbose)
+        cmd_compile(filename, args.output, args.verbose)
 
 
 if __name__ == "__main__":
