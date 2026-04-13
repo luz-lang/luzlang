@@ -522,7 +522,6 @@ class Interpreter:
             'file_exists': self.builtin_file_exists,
             'delete_file': self.builtin_delete_file,
             'exec':        self.builtin_exec,
-            'exec_code':   self.builtin_exec_code,
             'env_get':     self.builtin_env_get,
             'env_set':     self.builtin_env_set,
             'get_cwd':     self.builtin_get_cwd,
@@ -2306,13 +2305,6 @@ class Interpreter:
         import subprocess
         result = subprocess.run(command, shell=True, capture_output=True, text=True)
         return result.stdout + result.stderr
-
-    def builtin_exec_code(self, command):
-        if not isinstance(command, str):
-            raise TypeViolationFault("exec_code: command must be a string")
-        import subprocess
-        result = subprocess.run(command, shell=True)
-        return result.returncode
 
     def builtin_env_get(self, name):
         if not isinstance(name, str):

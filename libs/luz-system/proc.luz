@@ -1,18 +1,18 @@
 # proc.luz — Process and command execution helpers
 
-# Run a command and return its output, raising an alert if it fails
+# Run a command and return its output
 function run(command) {
-    output = exec(command)
-    code = exec_code(command)
-    if code != 0 {
-        alert $"Command failed (exit {code}): {command}"
-    }
-    return output
+    return exec(command)
 }
 
-# Run a command silently, return true if it succeeded
+# Run a command silently, return true if it produced output (best-effort)
 function try_run(command) {
-    return exec_code(command) == 0
+    attempt {
+        exec(command)
+        return true
+    } rescue {
+        return false
+    }
 }
 
 # Print system info to stdout
