@@ -33,3 +33,5 @@ luz/runtime/*.a
 tests/crashes/
 
 .claude/
+CLAUDE.md
+docs/
