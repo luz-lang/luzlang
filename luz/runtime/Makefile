@@ -5,7 +5,7 @@ CFLAGS  = -O2 -m64 -std=c11 -Wall -Wextra -Wpedantic -Wno-unused-parameter \
           -D__USE_MINGW_ANSI_STDIO=1
 LDFLAGS = -lm
 
-OBJ     = luz_runtime.o luz_rt_ops.o luz_rt_win_abi.o
+OBJ     = luz_runtime.o luz_rt_ops.o luz_rt_class.o luz_rt_win_abi.o
 LIB     = libluz_runtime.a
 
 all: $(LIB)
@@ -19,7 +19,10 @@ luz_runtime.o: luz_runtime.c luz_runtime.h
 luz_rt_ops.o: luz_rt_ops.c luz_rt_ops.h luz_runtime.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
-luz_rt_win_abi.o: luz_rt_win_abi.c luz_rt_win_abi.h luz_rt_ops.h luz_runtime.h
+luz_rt_class.o: luz_rt_class.c luz_rt_class.h luz_runtime.h
+	$(CC) $(CFLAGS) -c $< -o $@
+
+luz_rt_win_abi.o: luz_rt_win_abi.c luz_rt_win_abi.h luz_rt_ops.h luz_rt_class.h luz_runtime.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:

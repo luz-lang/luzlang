@@ -40,6 +40,7 @@ from .hir import (
     HirBreak, HirContinue, HirFuncDef, HirClassDef, HirStructDef,
     HirFieldLoad, HirFieldStore, HirIndex, HirIndexStore,
     HirList, HirTuple, HirDict, HirImport, HirAttemptRescue, HirAlert, HirPass,
+    HirNewObj, HirObjectCall, HirIsInstance,
 )
 
 
@@ -97,6 +98,13 @@ class LLVMCodeGen:
         self._continue_bb: Optional[ir.Block]  = None
         self._user_funcs:  dict[str, ir.Function] = {}
         self._runtime:     dict[str, ir.Function] = {}
+
+        # ── Class registry (populated as HirClassDef nodes are compiled) ──
+        self._class_defs:    dict[str, HirClassDef]       = {}
+        self._class_attrs:   dict[str, list]              = {}
+        self._class_ids:     dict[str, int]               = {}
+        self._class_parents: dict[str, Optional[str]]     = {}
+        self._next_class_id: int                          = 1
 
         self._declare_runtime()
         if self._is_windows:
@@ -200,6 +208,15 @@ class LLVMCodeGen:
         self._fn("luz_raise",         v,  vt)
         self._fn("luz_exc_push",      v,  p)
         self._fn("luz_exc_pop",       v)
+
+        # Class registry / object dispatch (luz_rt_class)
+        self._fn("luz_rt_register_class",  v,  self.i32, p, self.i64)
+        self._fn("luz_rt_set_parent",      v,  self.i32, self.i32)
+        self._fn("luz_rt_register_attr",   v,  self.i32, self.i32, p)
+        self._fn("luz_rt_register_method", v,  self.i32, p, p, self.i32)
+        self._fn("luz_rt_new_obj",         vt, self.i32)
+        self._fn("luz_rt_obj_call",        vt, vt, p, p, self.i32)
+        self._fn("luz_rt_isinstance",      vt, vt, self.i32)
 
         # Dynamic dispatch helpers (implemented in luz_rt_ops.c)
         for op in ("add", "sub", "mul", "div", "floordiv", "mod", "pow",
@@ -659,7 +676,7 @@ class LLVMCodeGen:
         # functions assigned to variables and passed as arguments.
         if node.name and self._scope_stack:
             fn_as_ptr = self._builder.bitcast(fn, self.ptr)
-            fn_i64    = self._builder.ptrtoi(fn_as_ptr, self.i64)
+            fn_i64    = self._builder.ptrtoint(fn_as_ptr, self.i64)
             func_val  = self._build_val(ir.Constant(self.i32, self.TAG_FUNCTION), fn_i64)
             slot      = self._alloca(node.name)
             self._builder.store(func_val, slot)
@@ -717,6 +734,10 @@ class LLVMCodeGen:
 
     def _gen_HirCall(self, node: HirCall) -> ir.Value:
         args = [self.gen(a) for a in node.args]
+
+        # Class constructor: Foo(x, y) → create object + call Foo__init
+        if node.func in self._class_ids:
+            return self._gen_class_new(node.func, args)
 
         rt_name = self._BUILTIN_RT.get(node.func)
         if rt_name and rt_name in self._runtime:
@@ -835,16 +856,195 @@ class LLVMCodeGen:
     # ── Class / Struct ────────────────────────────────────────────────────────
 
     def _gen_HirClassDef(self, node: HirClassDef) -> None:
+        name     = node.name
+        class_id = self._next_class_id
+        self._next_class_id += 1
+
+        self._class_defs[name]    = node
+        self._class_ids[name]     = class_id
+        self._class_parents[name] = node.parent
+
+        # Collect attribute names (parent attrs first, then own attrs from init).
+        attrs = self._collect_class_attrs(node)
+        self._class_attrs[name] = attrs
+
+        # ── Emit runtime registration calls ───────────────────────────────
+        parent_id = (self._class_ids.get(node.parent, 0)
+                     if node.parent else 0)
+
+        self._rt_call("luz_rt_register_class", [
+            ir.Constant(self.i32, class_id),
+            self._cstr(name),
+            ir.Constant(self.i64, len(attrs)),
+        ])
+        self._rt_call("luz_rt_set_parent", [
+            ir.Constant(self.i32, class_id),
+            ir.Constant(self.i32, parent_id),
+        ])
+        for slot, attr in enumerate(attrs):
+            self._rt_call("luz_rt_register_attr", [
+                ir.Constant(self.i32, class_id),
+                ir.Constant(self.i32, slot),
+                self._cstr(attr),
+            ])
+
+        # ── Compile methods with name-mangling and register them ──────────
         for method in node.methods:
-            if isinstance(method, HirFuncDef) and method.name:
-                scoped = HirFuncDef(
-                    name=f"{node.name}__{method.name}",
-                    params=method.params,
-                    return_type=method.return_type,
-                    body=method.body,
-                    is_variadic=method.is_variadic,
-                )
-                self._compile_func(scoped)
+            if not (isinstance(method, HirFuncDef) and method.name):
+                continue
+            mangled = f"{name}__{method.name}"
+            scoped  = HirFuncDef(
+                name=mangled,
+                params=method.params,
+                return_type=method.return_type,
+                body=method.body,
+                is_variadic=method.is_variadic,
+                is_multi_return=method.is_multi_return,
+            )
+            fn      = self._compile_func(scoped)
+            cb_fn   = self._gen_method_cb(fn, len(method.params))
+            cb_ptr  = self._builder.bitcast(cb_fn, self.ptr)
+            nparams = ir.Constant(self.i32, len(method.params))
+            self._rt_call("luz_rt_register_method", [
+                ir.Constant(self.i32, class_id),
+                self._cstr(method.name),   # unmangled — used for dispatch
+                cb_ptr,
+                nparams,
+            ])
+
+    def _gen_method_cb(self, fn: ir.Function, nparams: int) -> ir.Function:
+        """Wrap a method function in a pointer-only callback so GCC-compiled
+        dispatch code can call it without struct-by-value ABI ambiguity.
+
+        Signature: void cb(i8* out, i8* arg0, i8* arg1, ..., i8* argN)
+          - out   : pointer where the luz_value_t result is written
+          - arg0..N: pointers to the luz_value_t arguments (self is arg0)
+        """
+        ptr_t   = self.ptr
+        pw_type = ir.FunctionType(self.void, [ptr_t] * (1 + nparams))
+        pw_fn   = ir.Function(self.module, pw_type, name=fn.name + "__cb")
+
+        entry = pw_fn.append_basic_block("entry")
+        saved = (self._builder, self._func, self._scope_stack,
+                 self._break_bb, self._continue_bb)
+        self._func         = pw_fn
+        self._builder      = ir.IRBuilder(entry)
+        self._scope_stack  = [{}]
+        self._break_bb     = None
+        self._continue_bb  = None
+
+        val_ptr_t = ir.PointerType(self.val_t)
+        out_slot  = self._builder.bitcast(pw_fn.args[0], val_ptr_t, name="out")
+        call_args = []
+        for i, arg_ptr in enumerate(list(pw_fn.args)[1:]):
+            slot = self._builder.bitcast(arg_ptr, val_ptr_t, name=f"a{i}")
+            call_args.append(self._builder.load(slot, name=f"v{i}"))
+
+        result = self._builder.call(fn, call_args)
+        self._builder.store(result, out_slot)
+        self._builder.ret_void()
+
+        (self._builder, self._func, self._scope_stack,
+         self._break_bb, self._continue_bb) = saved
+        return pw_fn
+
+    # ── Class helpers ─────────────────────────────────────────────────────────
+
+    def _collect_class_attrs(self, node: HirClassDef) -> list:
+        """Return ordered list of attribute names for this class.
+
+        Parent attributes come first (in the parent's order), followed by
+        attributes introduced in this class's init method body.
+        """
+        attrs: list = []
+        seen:  set  = set()
+
+        # Inherit parent attributes first.
+        if node.parent and node.parent in self._class_attrs:
+            for a in self._class_attrs[node.parent]:
+                if a not in seen:
+                    attrs.append(a)
+                    seen.add(a)
+
+        # Scan init method body for  self.xxx = ...  patterns.
+        for m in node.methods:
+            if isinstance(m, HirFuncDef) and m.name == "init":
+                self._scan_attrs(m.body, attrs, seen)
+                break
+
+        return attrs
+
+    def _scan_attrs(self, block: HirBlock, attrs: list, seen: set) -> None:
+        """Recursively scan *block* for HirFieldStore on self."""
+        for stmt in block.stmts:
+            if (isinstance(stmt, HirFieldStore)
+                    and isinstance(stmt.obj, HirLoad)
+                    and stmt.obj.name == "self"
+                    and stmt.field not in seen):
+                attrs.append(stmt.field)
+                seen.add(stmt.field)
+            elif isinstance(stmt, HirBlock):
+                self._scan_attrs(stmt, attrs, seen)
+            elif isinstance(stmt, HirIf):
+                self._scan_attrs(stmt.then_block, attrs, seen)
+                if stmt.else_block:
+                    self._scan_attrs(stmt.else_block, attrs, seen)
+            elif isinstance(stmt, HirWhile):
+                self._scan_attrs(stmt.block, attrs, seen)
+
+    def _gen_class_new(self, class_name: str, init_args: list) -> ir.Value:
+        """Emit code for ClassName(args...).
+
+        1. Call luz_rt_new_obj(class_id) → allocates the object.
+        2. If an init method was compiled, call it with (obj, *init_args).
+        3. Return the new object value.
+        """
+        class_id = self._class_ids[class_name]
+        obj = self._rt_call("luz_rt_new_obj",
+                            [ir.Constant(self.i32, class_id)])
+
+        init_fn_name = f"{class_name}__init"
+        if init_fn_name in self._user_funcs:
+            fn          = self._user_funcs[init_fn_name]
+            param_count = len(fn.function_type.args)
+            all_args    = [obj] + list(init_args)
+            padded      = all_args[:param_count]
+            while len(padded) < param_count:
+                padded.append(self._null_val())
+            self._builder.call(fn, padded)
+
+        return obj
+
+    def _gen_HirObjectCall(self, node: HirObjectCall) -> ir.Value:
+        """Emit a runtime-dispatched method call: obj.method(args...)."""
+        obj     = self.gen(node.obj)
+        args_ir = [self.gen(a) for a in node.args]
+        n       = len(args_ir)
+
+        if n == 0:
+            arr_ptr = ir.Constant(self.ptr, None)
+        else:
+            arr_t = ir.ArrayType(self.val_t, n)
+            arr   = self._builder.alloca(arr_t, name="margs")
+            zero  = ir.Constant(self.i32, 0)
+            for i, arg in enumerate(args_ir):
+                slot = self._builder.gep(arr,
+                           [zero, ir.Constant(self.i32, i)],
+                           inbounds=True)
+                self._builder.store(arg, slot)
+            arr_ptr = self._builder.bitcast(arr, self.ptr)
+
+        method_ptr = self._cstr(node.method)
+        nargs      = ir.Constant(self.i32, n)
+        return self._rt_call("luz_rt_obj_call",
+                             [obj, method_ptr, arr_ptr, nargs])
+
+    def _gen_HirIsInstance(self, node: HirIsInstance) -> ir.Value:
+        """Emit isinstance(obj, ClassName) check."""
+        obj      = self.gen(node.obj)
+        class_id = self._class_ids.get(node.class_name, 0)
+        return self._rt_call("luz_rt_isinstance",
+                             [obj, ir.Constant(self.i32, class_id)])
 
     def _gen_HirStructDef(self, _node: HirStructDef) -> None:
         pass  # Structs map to luz_object_t at runtime; no LLVM type needed.
@@ -913,6 +1113,7 @@ class LLVMCodeGen:
     def compile_to_exe(self, output_path: str,
                        runtime_obj:    str = "luz/runtime/luz_runtime.o",
                        rt_ops_obj:     str = "luz/runtime/luz_rt_ops.o",
+                       rt_class_obj:   str = "luz/runtime/luz_rt_class.o",
                        rt_win_abi_obj: str = "luz/runtime/luz_rt_win_abi.o") -> None:
         """Compile + link the program into a standalone executable."""
         import subprocess, os, sys, tempfile
@@ -922,7 +1123,7 @@ class LLVMCodeGen:
         try:
             self.compile_to_object(obj_path)
             objs = [obj_path]
-            for extra in (runtime_obj, rt_ops_obj, rt_win_abi_obj):
+            for extra in (runtime_obj, rt_ops_obj, rt_class_obj, rt_win_abi_obj):
                 if os.path.exists(extra):
                     objs.append(extra)
 

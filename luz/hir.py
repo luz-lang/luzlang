@@ -264,6 +264,32 @@ class HirPass:
     pass
 
 
+@dataclass
+class HirNewObj:
+    """Instantiate a class: ClassName(args...).
+    args does NOT include self — the codegen creates the object first."""
+    class_name: str
+    args: list       # list[HirNode]
+    type: str = HIR_UNKNOWN
+
+
+@dataclass
+class HirObjectCall:
+    """Call a user-defined method on an object: obj.method(args...).
+    args does NOT include self — obj IS self."""
+    obj: Any         # HirNode
+    method: str      # unmangled method name (e.g. "get", "init")
+    args: list       # list[HirNode]
+    type: str = HIR_UNKNOWN
+
+
+@dataclass
+class HirIsInstance:
+    """isinstance(obj, ClassName) — checked via the class registry."""
+    obj: Any         # HirNode
+    class_name: str
+
+
 # ── Lowering pass ─────────────────────────────────────────────────────────────
 
 class Lowering:
@@ -762,23 +788,38 @@ class Lowering:
 
     # ── Calls ─────────────────────────────────────────────────────────────────
 
-    def lower_CallNode(self, node) -> HirCall:
+    def lower_CallNode(self, node) -> Any:
+        func_name = node.func_name_token.value
         args   = [self.lower(a) for a in node.arguments]
         kwargs = {k: self.lower(v) for k, v in node.kwargs.items()}
-        return HirCall(node.func_name_token.value, args, kwargs)
+
+        # instanceof(obj, ClassName) → HirIsInstance for the compiler.
+        # The second argument must be a bare class name (VarAccessNode).
+        if (func_name == "instanceof" and len(node.arguments) == 2
+                and type(node.arguments[1]).__name__ == "VarAccessNode"):
+            cls_name = node.arguments[1].token.value
+            return HirIsInstance(obj=args[0], class_name=cls_name)
+
+        # All other calls — class constructors are recognised later by the
+        # codegen, which checks func_name against its registered class map.
+        return HirCall(func_name, args, kwargs)
 
     def lower_ExprCallNode(self, node) -> HirExprCall:
         args   = [self.lower(a) for a in node.arguments]
         kwargs = {k: self.lower(v) for k, v in node.kwargs.items()}
         return HirExprCall(self.lower(node.callee_node), args, kwargs)
 
-    def lower_MethodCallNode(self, node) -> HirCall:
-        """Desugar obj.method(args) → runtime_func(obj, args)."""
+    def lower_MethodCallNode(self, node) -> Any:
+        """Desugar obj.method(args).
+
+        Known built-in dot-methods → HirCall(builtin_name, [obj, *args]).
+        User-defined class methods  → HirObjectCall(obj, method, args).
+        """
         obj    = self.lower(node.obj_node)
-        args   = [obj] + [self.lower(a) for a in node.arguments]
+        args   = [self.lower(a) for a in node.arguments]
         kwargs = {k: self.lower(v) for k, v in node.kwargs.items()}
         method = node.method_token.value
-        # Map known dot methods to their runtime equivalents
+
         _METHOD_MAP = {
             "append": "append", "pop": "pop", "insert": "insert",
             "sort": "sort",     "reverse": "reverse",
@@ -789,8 +830,12 @@ class Lowering:
             "replace": "replace",
             "starts_with": "starts_with", "ends_with": "ends_with",
         }
-        func_name = _METHOD_MAP.get(method, method)
-        return HirCall(func_name, args, kwargs)
+
+        if method in _METHOD_MAP:
+            return HirCall(_METHOD_MAP[method], [obj] + args, kwargs)
+
+        # User-defined method — dispatch at runtime via the class registry.
+        return HirObjectCall(obj=obj, method=method, args=args)
 
     # ── Attribute access ──────────────────────────────────────────────────────
 

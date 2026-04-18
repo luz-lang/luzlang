@@ -153,4 +153,18 @@ void luz_rt_str_literal_pw (luz_value_t *out, const char *data, int64_t len);
 
 _Bool luz_rt_truthy_pw(const luz_value_t *v);
 
+/* ── Class registry / dispatch (luz_rt_class) ────────────────────────────── */
+
+/* luz_rt_new_obj: returns luz_value_t; class_id is i32 (no struct arg). */
+void luz_rt_new_obj_pw(luz_value_t *out, uint32_t class_id);
+
+/* luz_rt_obj_call: obj is luz_value_t (by ptr); args is already a ptr. */
+void luz_rt_obj_call_pw(luz_value_t *out, const luz_value_t *obj,
+                         const char *name, const luz_value_t *args,
+                         int32_t nargs);
+
+/* luz_rt_isinstance: obj is luz_value_t (by ptr); class_id is i32. */
+void luz_rt_isinstance_pw(luz_value_t *out, const luz_value_t *obj,
+                           uint32_t class_id);
+
 #endif /* LUZ_RT_WIN_ABI_H */

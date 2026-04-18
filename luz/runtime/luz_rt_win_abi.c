@@ -178,3 +178,22 @@ void luz_rt_str_literal_pw(luz_value_t *out, const char *data, int64_t len) {
 /* ── Truthiness ──────────────────────────────────────────────────────────── */
 
 _Bool luz_rt_truthy_pw(const luz_value_t *v) { return luz_rt_truthy(*v); }
+
+/* ── Class registry / dispatch ───────────────────────────────────────────── */
+
+#include "luz_rt_class.h"
+
+void luz_rt_new_obj_pw(luz_value_t *out, uint32_t class_id) {
+    *out = luz_rt_new_obj(class_id);
+}
+
+void luz_rt_obj_call_pw(luz_value_t *out, const luz_value_t *obj,
+                         const char *name, const luz_value_t *args,
+                         int32_t nargs) {
+    *out = luz_rt_obj_call(*obj, name, (luz_value_t *)args, nargs);
+}
+
+void luz_rt_isinstance_pw(luz_value_t *out, const luz_value_t *obj,
+                           uint32_t class_id) {
+    *out = luz_rt_isinstance(*obj, class_id);
+}
