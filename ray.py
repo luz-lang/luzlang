@@ -47,6 +47,12 @@ def install_package(user, repo):
                 return
 
         with zipfile.ZipFile(zip_path, 'r') as z:
+            tmp_real = os.path.realpath(tmp)
+            for member in z.namelist():
+                member_real = os.path.realpath(os.path.join(tmp, member))
+                if not member_real.startswith(tmp_real + os.sep):
+                    print(f"ray: unsafe path in archive: {member}")
+                    return
             z.extractall(tmp)
 
         # GitHub extracts to repo-main/ or repo-master/

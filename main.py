@@ -33,6 +33,8 @@ def run(text, interpreter):
         err = SemanticFault("'return' used outside of a function")
         err.line = e.line
         raise err
+    except SystemExit:
+        raise
     except Exception as e:
         error_name = type(e).__name__
         line = getattr(e, 'line', None)

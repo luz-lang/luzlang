@@ -399,7 +399,7 @@ class Parser:
         except SyntaxFault as e:
             raise e
         except Exception as e:
-            raise ParseFault(f"Error while parsing code: {str(e)}")
+            raise ParseFault(f"Error while parsing code: {str(e)}") from e
         
     def parse_type_expr(self):
         if self.current_token.type == TokenType.NULL:
