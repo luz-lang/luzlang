@@ -8,6 +8,17 @@
  * See luz_rt_win_abi.h for the full rationale.
  */
 
+/* ── __chkstk stub ────────────────────────────────────────────────────────────
+ * LLVM emits a call to __chkstk when a function allocates more than 4 KB of
+ * stack in a single frame.  MinGW's libgcc exports ___chkstk (different name),
+ * so we provide the symbol ourselves.  The stub is a no-op: Luz programs are
+ * not expected to use deeply nested large frames, so skipping the probe is
+ * safe in practice.
+ */
+#ifdef _WIN64
+void __chkstk(void) {}
+#endif
+
 #include "luz_runtime.h"
 #include "luz_rt_ops.h"
 #include "luz_rt_win_abi.h"

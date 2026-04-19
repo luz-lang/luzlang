@@ -223,10 +223,10 @@ def _typecheck(ast, diag: Diagnostics):
         diag._summary_and_exit()
 
 
-def _lower(ast, diag: Diagnostics):
+def _lower(ast, diag: Diagnostics, source_file: str = ""):
     from luz.hir import Lowering
     try:
-        return Lowering().lower_program(ast)
+        return Lowering(source_file=source_file).lower_program(ast)
     except Exception as e:
         diag.die(e)
 
@@ -263,7 +263,7 @@ def _build_pipeline(filename: str):
     diag   = Diagnostics(filename, source)
     ast    = _lex_parse(source, diag)
     _typecheck(ast, diag)
-    hir    = _lower(ast, diag)
+    hir    = _lower(ast, diag, source_file=filename)
     gen    = _codegen(hir, diag)
     return ast, hir, gen, diag
 

@@ -1047,6 +1047,11 @@ class LLVMCodeGen:
         return self._rt_call("luz_rt_obj_call",
                              [obj, method_ptr, arr_ptr, nargs])
 
+    def _gen_HirNewObj(self, node: HirNewObj) -> ir.Value:
+        """Emit ClassName(args) — creates a new object instance."""
+        init_args = [self.gen(a) for a in node.args]
+        return self._gen_class_new(node.class_name, init_args)
+
     def _gen_HirIsInstance(self, node: HirIsInstance) -> ir.Value:
         """Emit isinstance(obj, ClassName) check."""
         obj      = self.gen(node.obj)

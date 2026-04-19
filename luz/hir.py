@@ -22,6 +22,8 @@
 
 from __future__ import annotations
 
+import os
+import sys
 from dataclasses import dataclass, field as dc_field
 from typing import Any, Optional
 
@@ -298,11 +300,16 @@ class Lowering:
 
     Usage:
         from luz.hir import Lowering
-        hir = Lowering().lower_program(ast_list)
+        hir = Lowering(source_file="main.luz").lower_program(ast_list)
     """
 
-    def __init__(self):
+    def __init__(self, source_file: str = ""):
         self._temp_counter = 0
+        self._imported: set        = set()   # absolute paths already inlined
+        self._file_stack: list     = []      # importer chain for relative resolution
+        self._module_funcs: dict   = {}      # abs_path → list[HirFuncDef]
+        if source_file:
+            self._file_stack.append(os.path.abspath(source_file))
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -311,7 +318,9 @@ class Lowering:
         result = []
         for node in ast:
             lowered = self.lower(node)
-            if isinstance(lowered, HirBlock):
+            if isinstance(lowered, list):
+                result.extend(lowered)
+            elif isinstance(lowered, HirBlock):
                 result.extend(lowered.stmts)
             elif lowered is not None:
                 result.append(lowered)
@@ -888,11 +897,155 @@ class Lowering:
         return HirStructDef(name=node.name_token.value, fields=fields)
 
     # ── Imports ───────────────────────────────────────────────────────────────
+    #
+    # Model: monolithic binary.  All imported modules are inlined into the
+    # single top-level LLVM module before codegen runs.  There are no separate
+    # per-module object files; everything is compiled to one .o and linked once.
+    # This gives the optimiser full visibility across the whole program and keeps
+    # the toolchain simple.  Incremental compilation is out of scope for now.
+    #
+    # Supported import forms:
+    #   import "path"              — inline all definitions into current scope
+    #   from "path" import a, b   — same (filtering is interpreter-only; the
+    #                               compiled binary sees every symbol anyway)
+    #   import "path" as alias    — inline + create a module-class so that
+    #                               alias.func() dispatches correctly at runtime
 
-    def lower_ImportNode(self, node) -> HirImport:
+    def lower_ImportNode(self, node) -> list:
+        """Resolve, load, and inline an imported module's HIR nodes.
+
+        Returns the flat list of HIR nodes from the imported file so that
+        lower_program() can extend the parent program's node list directly.
+        An already-imported file is silently skipped (returns []).
+        """
+        raw_path = node.file_path_token.value
+        resolved = self._resolve_import_path(raw_path)
+        if resolved is None:
+            # Unresolvable import — emit a no-op placeholder so the program
+            # at least compiles; a runtime error will surface if the symbol
+            # is actually used.
+            return []
+
+        abs_path = os.path.abspath(resolved)
+        if abs_path in self._imported:
+            # Module already inlined.  If this import introduces a new alias,
+            # still emit the class binding so the alias is usable.
+            alias = node.alias.value if node.alias else None
+            if alias:
+                return self._emit_alias_binding(alias, abs_path)
+            return []
+        self._imported.add(abs_path)
+
+        try:
+            with open(resolved, encoding="utf-8") as f:
+                source = f.read()
+        except OSError:
+            return []
+
+        from luz.lexer  import Lexer
+        from luz.parser import Parser
+        sub_ast = Parser(Lexer(source).get_tokens()).parse()
+
+        self._file_stack.append(abs_path)
+        try:
+            nodes = self.lower_program(sub_ast)
+        finally:
+            self._file_stack.pop()
+
+        # Track which HirFuncDef nodes were contributed by this module so that
+        # alias bindings know the correct arity for each forwarding stub.
+        func_nodes = [n for n in nodes if isinstance(n, HirFuncDef) and n.name]
+        self._module_funcs[abs_path] = func_nodes
+
         alias = node.alias.value if node.alias else None
-        names = [t.value for t in node.names] if node.names else []
-        return HirImport(path=node.path, alias=alias, names=names)
+        if alias:
+            nodes = nodes + self._emit_alias_binding(alias, abs_path)
+
+        return nodes
+
+    def _emit_alias_binding(self, alias: str, abs_path: str) -> list:
+        """Emit HIR nodes that bind *alias* to a module-class instance.
+
+        Creates a synthetic HirClassDef whose methods forward to the already-
+        inlined top-level functions, then a HirLet that instantiates it.
+        This makes ``alias.func(args)`` work via the existing HirObjectCall →
+        luz_rt_obj_call dispatch path without any extra runtime support.
+        """
+        func_nodes: list = self._module_funcs.get(abs_path, [])
+        if not func_nodes:
+            return []
+
+        class_name = f"__Module_{alias}"
+
+        # Build forwarding stubs that include a leading __self__ parameter.
+        # luz_rt_obj_call always passes the receiver as arg0 of the callback
+        # (nparams counts self), so every class method must accept self even if
+        # it doesn't use it.  The stub ignores __self__ and forwards the
+        # remaining args to the already-compiled top-level function.
+        methods = []
+        for fn in func_nodes:
+            stub_params = [("__self__", HIR_UNKNOWN)] + list(fn.params)
+            param_loads = [HirLoad(p[0]) for p in fn.params]
+            stub = HirFuncDef(
+                name=fn.name,
+                params=stub_params,
+                return_type=fn.return_type,
+                body=HirBlock([HirReturn(HirCall(
+                    func=fn.name,
+                    args=param_loads,
+                    kwargs={},
+                ))]),
+                is_variadic=fn.is_variadic,
+                is_multi_return=fn.is_multi_return,
+            )
+            methods.append(stub)
+
+        class_def = HirClassDef(name=class_name, parent=None, methods=methods)
+        instance  = HirNewObj(class_name=class_name, args=[])
+        let_alias = HirLet(name=alias, type=HIR_UNKNOWN, value=instance)
+        return [class_def, let_alias]
+
+    def _resolve_import_path(self, raw: str) -> Optional[str]:
+        """Return a resolvable file path for `raw`, or None."""
+        if os.path.exists(raw):
+            return raw
+
+        name = os.path.splitext(os.path.basename(raw))[0]
+        candidates = [
+            os.path.join("luz_modules", name, f"{name}.luz"),
+            os.path.join("luz_modules", name, "main.luz"),
+        ]
+        # Relative to importing file's directory (handles stdlib sub-imports)
+        if self._file_stack:
+            importer_dir = os.path.dirname(self._file_stack[-1])
+            candidates += [
+                os.path.join(importer_dir, os.path.basename(raw)),
+                os.path.join(importer_dir, f"{name}.luz"),
+            ]
+        luz_home = os.environ.get("LUZ_HOME")
+        if luz_home:
+            candidates += [
+                os.path.join(luz_home, "lib", name, f"{name}.luz"),
+                os.path.join(luz_home, "lib", name, "main.luz"),
+                os.path.join(luz_home, "lib", f"luz-{name}", f"{name}.luz"),
+                os.path.join(luz_home, "lib", f"luz-{name}", "main.luz"),
+            ]
+        exe_dir = os.path.dirname(sys.executable)
+        candidates += [
+            os.path.join(exe_dir, "lib", name, f"{name}.luz"),
+            os.path.join(exe_dir, "lib", name, "main.luz"),
+            os.path.join(exe_dir, "lib", f"luz-{name}", f"{name}.luz"),
+            os.path.join(exe_dir, "lib", f"luz-{name}", "main.luz"),
+        ]
+        candidates += [
+            os.path.join("libs", f"luz-{name}", f"{name}.luz"),
+            os.path.join("libs", name, f"{name}.luz"),
+            os.path.join("libs", name, "main.luz"),
+        ]
+        for candidate in candidates:
+            if os.path.exists(candidate):
+                return candidate
+        return None
 
     # ── Errors ────────────────────────────────────────────────────────────────
 
