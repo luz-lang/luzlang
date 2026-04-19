@@ -865,15 +865,7 @@ class Interpreter:
                 pending_raise = re
 
         if node.finally_block:
-            if pending_raise is not None:
-                # An error is already pending — run finally but don't let it
-                # overwrite the original error if it also raises.
-                try:
-                    self.execute_block(node.finally_block, Environment(self.current_env))
-                except Exception:
-                    pass
-            else:
-                self.execute_block(node.finally_block, Environment(self.current_env))
+            self.execute_block(node.finally_block, Environment(self.current_env))
 
         if pending_raise is not None:
             raise pending_raise
