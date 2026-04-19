@@ -106,6 +106,10 @@ class LLVMCodeGen:
         self._class_parents: dict[str, Optional[str]]     = {}
         self._next_class_id: int                          = 1
 
+        # ── Struct registry (populated as HirStructDef nodes are compiled) ──
+        self._struct_defs: dict[str, HirStructDef] = {}
+        self._struct_ids:  dict[str, int]          = {}
+
         self._declare_runtime()
         if self._is_windows:
             self._declare_windows_abi()
@@ -739,6 +743,10 @@ class LLVMCodeGen:
         if node.func in self._class_ids:
             return self._gen_class_new(node.func, args)
 
+        # Struct constructor: Point(x, y) or Point(x: 1.0, y: 2.0)
+        if node.func in self._struct_ids:
+            return self._gen_struct_new(node.func, args, node.kwargs)
+
         rt_name = self._BUILTIN_RT.get(node.func)
         if rt_name and rt_name in self._runtime:
             return self._rt_call(rt_name, args)
@@ -1046,8 +1054,55 @@ class LLVMCodeGen:
         return self._rt_call("luz_rt_isinstance",
                              [obj, ir.Constant(self.i32, class_id)])
 
-    def _gen_HirStructDef(self, _node: HirStructDef) -> None:
-        pass  # Structs map to luz_object_t at runtime; no LLVM type needed.
+    def _gen_HirStructDef(self, node: HirStructDef) -> None:
+        name      = node.name
+        struct_id = self._next_class_id
+        self._next_class_id += 1
+
+        self._struct_defs[name] = node
+        self._struct_ids[name]  = struct_id
+
+        field_names = [f[0] for f in node.fields]
+
+        self._rt_call("luz_rt_register_class", [
+            ir.Constant(self.i32, struct_id),
+            self._cstr(name),
+            ir.Constant(self.i64, len(field_names)),
+        ])
+        for slot, fname in enumerate(field_names):
+            self._rt_call("luz_rt_register_attr", [
+                ir.Constant(self.i32, struct_id),
+                ir.Constant(self.i32, slot),
+                self._cstr(fname),
+            ])
+
+    def _gen_struct_new(self, struct_name: str,
+                        pos_args: list, kwargs: dict) -> ir.Value:
+        """Emit StructName(args) or StructName(field: val, ...).
+
+        Resolution order per field (by declaration order):
+          1. positional arg at the matching index
+          2. keyword arg matching the field name
+          3. compiled default expression from the struct definition
+          4. null (field left unset)
+        """
+        sdef      = self._struct_defs[struct_name]
+        struct_id = self._struct_ids[struct_name]
+        obj       = self._rt_call("luz_rt_new_obj",
+                                  [ir.Constant(self.i32, struct_id)])
+
+        for i, (fname, _ftype, fdefault) in enumerate(sdef.fields):
+            if i < len(pos_args):
+                val = pos_args[i]
+            elif fname in kwargs:
+                val = self.gen(kwargs[fname])
+            elif fdefault is not None:
+                val = self.gen(fdefault)
+            else:
+                val = self._null_val()
+            self._rt_call("luz_rt_setfield", [obj, self._cstr(fname), val])
+
+        return obj
 
     def _gen_HirImport(self, _node: HirImport) -> None:
         pass  # Imports are resolved before codegen.

@@ -1291,6 +1291,77 @@ class TestDefiniteAssignment:
         assert self._uninit_errors(code)
 
 
+# ── Structs ──────────────────────────────────────────────────────────────────
+
+class TestStructs:
+    def test_positional_construction(self):
+        code = "struct Point { x: float, y: float }\np: Point = Point(3.0, 4.0)"
+        i = run(code)
+        p = i.global_env.lookup("p")
+        assert p.get("x") == 3.0
+        assert p.get("y") == 4.0
+
+    def test_keyword_construction(self):
+        code = "struct Point { x: float, y: float }\np: Point = Point(x: 10.0, y: 20.0)"
+        i = run(code)
+        p = i.global_env.lookup("p")
+        assert p.get("x") == 10.0
+        assert p.get("y") == 20.0
+
+    def test_keyword_partial_order(self):
+        code = "struct Point { x: float, y: float }\np: Point = Point(y: 5.0, x: 1.0)"
+        i = run(code)
+        p = i.global_env.lookup("p")
+        assert p.get("x") == 1.0
+        assert p.get("y") == 5.0
+
+    def test_defaults_all(self):
+        code = "struct Config { debug: bool = false, retries: int = 3 }\nc: Config = Config()"
+        i = run(code)
+        c = i.global_env.lookup("c")
+        assert c.get("debug") == False
+        assert c.get("retries") == 3
+
+    def test_defaults_partial_kwargs(self):
+        code = "struct Config { debug: bool = false, retries: int = 3, timeout: float = 30.0 }\nc: Config = Config(debug: true, timeout: 10.0)"
+        i = run(code)
+        c = i.global_env.lookup("c")
+        assert c.get("debug") == True
+        assert c.get("retries") == 3
+        assert c.get("timeout") == 10.0
+
+    def test_field_mutation(self):
+        code = "struct Point { x: float, y: float }\np: Point = Point(1.0, 2.0)\np.x = 99.0"
+        i = run(code)
+        p = i.global_env.lookup("p")
+        assert p.get("x") == 99.0
+
+    def test_struct_in_function(self):
+        code = (
+            "struct Point { x: float, y: float }\n"
+            "function mag(p: Point) -> float { return sqrt(p.x * p.x + p.y * p.y) }\n"
+            "result: float = mag(Point(3.0, 4.0))"
+        )
+        assert env(code, "result") == 5.0
+
+    def test_unknown_field_raises(self):
+        from luz.exceptions import AttributeNotFoundFault
+        code = "struct Point { x: float, y: float }\np: Point = Point(1.0, 2.0)\np.z"
+        with pytest.raises(AttributeNotFoundFault):
+            run(code)
+
+    def test_multiple_struct_types(self):
+        code = (
+            "struct Point { x: float, y: float }\n"
+            "struct Color { r: int, g: int, b: int }\n"
+            "p: Point = Point(1.0, 2.0)\n"
+            "c: Color = Color(255, 0, 128)"
+        )
+        i = run(code)
+        assert i.global_env.lookup("p").get("x") == 1.0
+        assert i.global_env.lookup("c").get("g") == 0
+
+
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":

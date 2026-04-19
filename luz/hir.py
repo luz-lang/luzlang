@@ -374,7 +374,8 @@ class Lowering:
         return HirLiteral(node.token.value, HIR_STRING)
 
     def lower_BooleanNode(self, node) -> HirLiteral:
-        return HirLiteral(node.token.value == "true", HIR_BOOL)
+        from luz.lexer import TokenType
+        return HirLiteral(node.token.type == TokenType.TRUE, HIR_BOOL)
 
     def lower_NullNode(self, _) -> HirLiteral:
         return HirLiteral(None, HIR_NULL)
