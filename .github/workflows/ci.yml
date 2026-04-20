@@ -22,7 +22,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
 
       - name: Install dependencies
-        run: pip install pytest pylint
+        run: pip install pytest pylint llvmlite
+
+      - name: Build Luz C runtime
+        run: make -C luz/runtime
 
       - name: Run test suite
         run: pytest tests/test_suite.py -v
