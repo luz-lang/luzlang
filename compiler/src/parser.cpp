@@ -119,6 +119,9 @@ private:
             case TT_CLASS:    return stmt_class();
             case TT_IMPORT:   return stmt_import();
             case TT_FROM:     return stmt_from_import();
+            case TT_ATTEMPT:  return stmt_attempt();
+            case TT_ALERT:    return stmt_alert();
+            case TT_SWITCH:   return stmt_switch();
             case TT_IDENTIFIER: return stmt_starting_with_ident();
             default:          return stmt_expr();
         }
@@ -248,6 +251,111 @@ private:
             prm.default_val = expression();
         }
         return prm;
+    }
+
+    // ── attempt / rescue / finally ───────────────────────────────────────────
+    StmtPtr stmt_attempt() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'attempt'
+        Block try_body = braced_block("attempt");
+
+        expect(TT_RESCUE, "'rescue'");
+
+        std::string error_var;
+        if (match(TT_LPAREN)) {
+            const Token& ev = expect(TT_IDENTIFIER, "error variable name");
+            error_var = ev.value;
+            expect(TT_RPAREN, "')'");
+        }
+
+        Block catch_body = braced_block("rescue");
+
+        Block finally_body;
+        if (match(TT_FINALLY)) {
+            finally_body = braced_block("finally");
+        }
+
+        return StmtPtr(new Attempt(
+            std::move(try_body), error_var,
+            std::move(catch_body), std::move(finally_body), p));
+    }
+
+    // ── alert ─────────────────────────────────────────────────────────────────
+    StmtPtr stmt_alert() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'alert'
+        ExprPtr e = expression();
+        return StmtPtr(new Alert(std::move(e), p));
+    }
+
+    // ── switch ────────────────────────────────────────────────────────────────
+    // switch expr {
+    //     case v1, v2 { block }
+    //     else        { block }
+    // }
+    StmtPtr stmt_switch() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'switch'
+        ExprPtr subject = expression();
+
+        expect(TT_LBRACE, "'{'");
+
+        std::vector<SwitchCase> cases;
+        Block else_body;
+
+        while (!check(TT_RBRACE) && !at_end()) {
+            if (match(TT_ELSE)) {
+                else_body = braced_block("else");
+                break;  // else must be last
+            }
+            expect(TT_CASE, "'case'");
+            SwitchCase sc;
+            sc.values.push_back(expression());
+            while (match(TT_COMMA)) sc.values.push_back(expression());
+            sc.body = braced_block("case");
+            cases.push_back(std::move(sc));
+        }
+
+        expect(TT_RBRACE, "'}'");
+        return StmtPtr(new Switch(
+            std::move(subject), std::move(cases), std::move(else_body), p));
+    }
+
+    // ── match (expression) ────────────────────────────────────────────────────
+    // match expr {
+    //     v1, v2 => result
+    //     _      => result
+    // }
+    ExprPtr expr_match() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'match'
+        ExprPtr subject = expression();
+
+        expect(TT_LBRACE, "'{'");
+
+        std::vector<MatchArm> arms;
+        while (!check(TT_RBRACE) && !at_end()) {
+            MatchArm arm;
+
+            // Wildcard: _ => expr
+            if (check(TT_IDENTIFIER) && peek().value == "_") {
+                advance();
+                expect(TT_ARROW, "'=>'");
+                arm.result = expression();
+                arms.push_back(std::move(arm));
+                break;  // wildcard must be last
+            }
+
+            // Normal patterns: expr, expr => result
+            arm.patterns.push_back(expression());
+            while (match(TT_COMMA)) arm.patterns.push_back(expression());
+            expect(TT_ARROW, "'=>'");
+            arm.result = expression();
+            arms.push_back(std::move(arm));
+        }
+
+        expect(TT_RBRACE, "'}'");
+        return ExprPtr(new Match(std::move(subject), std::move(arms), p));
     }
 
     // ── f-string ─────────────────────────────────────────────────────────────
@@ -663,6 +771,8 @@ private:
             case TT_FSTRING:
                 advance();
                 return parse_fstring(t);
+            case TT_MATCH:
+                return expr_match();
             case TT_TRUE:
                 advance();
                 return ExprPtr(new BoolLit(true, pos_of(t)));

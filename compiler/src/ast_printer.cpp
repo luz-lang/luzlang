@@ -77,6 +77,24 @@ void print_expr(std::ostream& os, const Expr& e, int ind) {
             }
             break;
         }
+        case NodeKind::Match: {
+            const auto& n = static_cast<const Match&>(e);
+            os << "Match\n";
+            print_indent(os, ind + 2); os << "subject:\n";
+            print_expr(os, *n.subject, ind + 4);
+            for (const auto& arm : n.arms) {
+                print_indent(os, ind + 2);
+                if (arm.patterns.empty()) {
+                    os << "wildcard =>\n";
+                } else {
+                    os << "patterns =>\n";
+                    for (const auto& pt : arm.patterns) print_expr(os, *pt, ind + 4);
+                }
+                print_indent(os, ind + 2); os << "result:\n";
+                print_expr(os, *arm.result, ind + 4);
+            }
+            break;
+        }
         case NodeKind::FStringLit: {
             const auto& n = static_cast<const FStringLit&>(e);
             os << "FString\n";
@@ -237,6 +255,44 @@ void print_stmt(std::ostream& os, const Stmt& s, int ind) {
             }
             print_indent(os, ind + 2); os << "body:\n";
             print_block(os, n.body, ind + 4);
+            break;
+        }
+        case NodeKind::Attempt: {
+            const auto& n = static_cast<const Attempt&>(s);
+            os << "Attempt\n";
+            print_indent(os, ind + 2); os << "try:\n";
+            print_block(os, n.try_body, ind + 4);
+            print_indent(os, ind + 2);
+            os << "rescue";
+            if (!n.error_var.empty()) os << "(" << n.error_var << ")";
+            os << ":\n";
+            print_block(os, n.catch_body, ind + 4);
+            if (!n.finally_body.empty()) {
+                print_indent(os, ind + 2); os << "finally:\n";
+                print_block(os, n.finally_body, ind + 4);
+            }
+            break;
+        }
+        case NodeKind::Alert: {
+            os << "Alert\n";
+            print_expr(os, *static_cast<const Alert&>(s).expr, ind + 2);
+            break;
+        }
+        case NodeKind::Switch: {
+            const auto& n = static_cast<const Switch&>(s);
+            os << "Switch\n";
+            print_indent(os, ind + 2); os << "subject:\n";
+            print_expr(os, *n.subject, ind + 4);
+            for (const auto& c : n.cases) {
+                print_indent(os, ind + 2); os << "case:\n";
+                for (const auto& v : c.values) print_expr(os, *v, ind + 4);
+                print_indent(os, ind + 2); os << "body:\n";
+                print_block(os, c.body, ind + 4);
+            }
+            if (!n.else_body.empty()) {
+                print_indent(os, ind + 2); os << "else:\n";
+                print_block(os, n.else_body, ind + 4);
+            }
             break;
         }
         case NodeKind::Import: {

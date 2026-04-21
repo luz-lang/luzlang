@@ -46,6 +46,10 @@ enum class NodeKind {
     Import,       // import "path" [as alias]
                   // from "path" import name, ...
     FStringLit,   // $"text {expr} text"
+    Attempt,      // attempt { } rescue (e) { } [finally { }]
+    Alert,        // alert expr
+    Switch,       // switch expr { case v { } ... else { } }
+    Match,        // match expr { v => expr  _ => expr }  (expression)
 };
 
 enum class UnOp  { Neg, Not };
@@ -287,6 +291,52 @@ struct IndexAssign : Stmt {
     ExprPtr base;
     ExprPtr index;
     ExprPtr value;
+};
+
+// attempt { try_body } rescue [(err)] { catch_body } [finally { finally_body }]
+struct Attempt : Stmt {
+    Attempt(Block tb, std::string ev, Block cb, Block fb, SourcePos p)
+        : Stmt(NodeKind::Attempt, p),
+          try_body(std::move(tb)), error_var(std::move(ev)),
+          catch_body(std::move(cb)), finally_body(std::move(fb)) {}
+    Block       try_body;
+    std::string error_var;    // empty if rescue has no (err) binding
+    Block       catch_body;
+    Block       finally_body; // empty if no finally clause
+};
+
+// alert expr  — raises a user-defined error
+struct Alert : Stmt {
+    Alert(ExprPtr e, SourcePos p) : Stmt(NodeKind::Alert, p), expr(std::move(e)) {}
+    ExprPtr expr;
+};
+
+// switch expr { case v1, v2 { block } ... else { block } }
+struct SwitchCase {
+    std::vector<ExprPtr> values;  // one or more match values
+    Block                body;
+};
+
+struct Switch : Stmt {
+    Switch(ExprPtr s, std::vector<SwitchCase> cs, Block eb, SourcePos p)
+        : Stmt(NodeKind::Switch, p),
+          subject(std::move(s)), cases(std::move(cs)), else_body(std::move(eb)) {}
+    ExprPtr                  subject;
+    std::vector<SwitchCase>  cases;
+    Block                    else_body;  // empty if no else
+};
+
+// match expr { patterns => result  _ => result }  (expression, not statement)
+struct MatchArm {
+    std::vector<ExprPtr> patterns;  // empty = wildcard (_)
+    ExprPtr              result;
+};
+
+struct Match : Expr {
+    Match(ExprPtr s, std::vector<MatchArm> as, SourcePos p)
+        : Expr(NodeKind::Match, p), subject(std::move(s)), arms(std::move(as)) {}
+    ExprPtr               subject;
+    std::vector<MatchArm> arms;
 };
 
 // A single part of an f-string: either a literal text segment or an
