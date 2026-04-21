@@ -21,6 +21,10 @@ enum class NodeKind {
     Identifier,
     UnaryOp, BinaryOp,
     Call,
+    ListLit,      // [expr, ...]
+    DictLit,      // {key: value, ...}
+    IndexAccess,  // expr[index]
+    Attribute,    // expr.name
     // Statements
     ExprStmt,
     Assign,         // x = expr  (new binding or reassignment)
@@ -115,6 +119,37 @@ struct Call : Expr {
         : Expr(NodeKind::Call, p), callee(std::move(c)), args(std::move(a)) {}
     ExprPtr              callee;
     std::vector<ExprPtr> args;
+};
+
+struct ListLit : Expr {
+    ListLit(std::vector<ExprPtr> e, SourcePos p)
+        : Expr(NodeKind::ListLit, p), elements(std::move(e)) {}
+    std::vector<ExprPtr> elements;
+};
+
+struct DictPair {
+    ExprPtr key;
+    ExprPtr value;
+};
+
+struct DictLit : Expr {
+    DictLit(std::vector<DictPair> ps, SourcePos p)
+        : Expr(NodeKind::DictLit, p), pairs(std::move(ps)) {}
+    std::vector<DictPair> pairs;
+};
+
+struct IndexAccess : Expr {
+    IndexAccess(ExprPtr b, ExprPtr i, SourcePos p)
+        : Expr(NodeKind::IndexAccess, p), base(std::move(b)), index(std::move(i)) {}
+    ExprPtr base;
+    ExprPtr index;
+};
+
+struct Attribute : Expr {
+    Attribute(ExprPtr o, std::string n, SourcePos p)
+        : Expr(NodeKind::Attribute, p), object(std::move(o)), name(std::move(n)) {}
+    ExprPtr     object;
+    std::string name;
 };
 
 // ─── Statement nodes ─────────────────────────────────────────────────────────

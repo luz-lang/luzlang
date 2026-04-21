@@ -77,6 +77,36 @@ void print_expr(std::ostream& os, const Expr& e, int ind) {
             }
             break;
         }
+        case NodeKind::ListLit: {
+            const auto& n = static_cast<const ListLit&>(e);
+            os << "List[" << n.elements.size() << "]\n";
+            for (const auto& el : n.elements) print_expr(os, *el, ind + 2);
+            break;
+        }
+        case NodeKind::DictLit: {
+            const auto& n = static_cast<const DictLit&>(e);
+            os << "Dict[" << n.pairs.size() << "]\n";
+            for (const auto& p : n.pairs) {
+                print_indent(os, ind + 2); os << "key:\n";
+                print_expr(os, *p.key, ind + 4);
+                print_indent(os, ind + 2); os << "val:\n";
+                print_expr(os, *p.value, ind + 4);
+            }
+            break;
+        }
+        case NodeKind::IndexAccess: {
+            const auto& n = static_cast<const IndexAccess&>(e);
+            os << "Index\n";
+            print_expr(os, *n.base,  ind + 2);
+            print_expr(os, *n.index, ind + 2);
+            break;
+        }
+        case NodeKind::Attribute: {
+            const auto& n = static_cast<const Attribute&>(e);
+            os << "Attr(." << n.name << ")\n";
+            print_expr(os, *n.object, ind + 2);
+            break;
+        }
         default:
             os << "<?expr>\n";
             break;

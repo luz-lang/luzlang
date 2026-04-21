@@ -444,19 +444,31 @@ private:
         return call();
     }
 
+    // Postfix chain: calls f(...), index [i], attribute .name — left-to-right.
     ExprPtr call() {
         ExprPtr expr = primary();
-        while (check(TT_LPAREN)) {
-            const Token& lparen = advance();
-            std::vector<ExprPtr> args;
-            if (!check(TT_RPAREN)) {
-                args.push_back(expression());
-                while (match(TT_COMMA)) {
+        for (;;) {
+            if (check(TT_LPAREN)) {
+                const Token& lparen = advance();
+                std::vector<ExprPtr> args;
+                if (!check(TT_RPAREN)) {
                     args.push_back(expression());
+                    while (match(TT_COMMA)) args.push_back(expression());
                 }
+                expect(TT_RPAREN, "')'");
+                expr.reset(new Call(std::move(expr), std::move(args), pos_of(lparen)));
+            } else if (check(TT_LBRACKET)) {
+                const Token& lb = advance();
+                ExprPtr idx = expression();
+                expect(TT_RBRACKET, "']'");
+                expr.reset(new IndexAccess(std::move(expr), std::move(idx), pos_of(lb)));
+            } else if (check(TT_DOT)) {
+                const Token& dot = advance();
+                const Token& attr = expect(TT_IDENTIFIER, "attribute name");
+                expr.reset(new Attribute(std::move(expr), attr.value, pos_of(dot)));
+            } else {
+                break;
             }
-            expect(TT_RPAREN, "')'");
-            expr.reset(new Call(std::move(expr), std::move(args), pos_of(lparen)));
         }
         return expr;
     }
@@ -493,6 +505,38 @@ private:
                 ExprPtr inner = expression();
                 expect(TT_RPAREN, "')'");
                 return inner;
+            }
+            case TT_LBRACKET: {
+                // List literal: [expr, ...]
+                SourcePos lp = pos_of(t);
+                advance();
+                std::vector<ExprPtr> elems;
+                if (!check(TT_RBRACKET)) {
+                    elems.push_back(expression());
+                    while (match(TT_COMMA) && !check(TT_RBRACKET))
+                        elems.push_back(expression());
+                }
+                expect(TT_RBRACKET, "']'");
+                return ExprPtr(new ListLit(std::move(elems), lp));
+            }
+            case TT_LBRACE: {
+                // Dict literal: {key: value, ...}
+                SourcePos lp = pos_of(t);
+                advance();
+                std::vector<DictPair> pairs;
+                if (!check(TT_RBRACE)) {
+                    do {
+                        ExprPtr k = expression();
+                        expect(TT_COLON, "':'");
+                        ExprPtr v = expression();
+                        DictPair dp;
+                        dp.key   = std::move(k);
+                        dp.value = std::move(v);
+                        pairs.push_back(std::move(dp));
+                    } while (match(TT_COMMA) && !check(TT_RBRACE));
+                }
+                expect(TT_RBRACE, "'}'");
+                return ExprPtr(new DictLit(std::move(pairs), lp));
             }
             default:
                 throw ParseError(
