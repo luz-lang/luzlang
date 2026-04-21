@@ -39,6 +39,10 @@ enum class NodeKind {
     Break, Continue, Pass,
     Return,
     FuncDef,
+    StructDef,
+    ClassDef,
+    AttrAssign,   // expr.name = value
+    IndexAssign,  // expr[idx]  = value
 };
 
 enum class UnOp  { Neg, Not };
@@ -260,6 +264,50 @@ struct FuncDef : Stmt {
     std::vector<Param> params;
     std::string        return_type;  // empty if not annotated
     Block              body;
+};
+
+// expr.name = value
+struct AttrAssign : Stmt {
+    AttrAssign(ExprPtr obj, std::string attr, ExprPtr val, SourcePos p)
+        : Stmt(NodeKind::AttrAssign, p),
+          object(std::move(obj)), attr(std::move(attr)), value(std::move(val)) {}
+    ExprPtr     object;
+    std::string attr;
+    ExprPtr     value;
+};
+
+// expr[idx] = value
+struct IndexAssign : Stmt {
+    IndexAssign(ExprPtr base, ExprPtr idx, ExprPtr val, SourcePos p)
+        : Stmt(NodeKind::IndexAssign, p),
+          base(std::move(base)), index(std::move(idx)), value(std::move(val)) {}
+    ExprPtr base;
+    ExprPtr index;
+    ExprPtr value;
+};
+
+// struct Name { field: Type [= default], ... }
+struct StructField {
+    std::string name;
+    std::string type_name;
+    ExprPtr     default_val;  // nullptr if no default
+};
+
+struct StructDef : Stmt {
+    StructDef(std::string n, std::vector<StructField> fs, SourcePos p)
+        : Stmt(NodeKind::StructDef, p), name(std::move(n)), fields(std::move(fs)) {}
+    std::string              name;
+    std::vector<StructField> fields;
+};
+
+// class Name [extends Parent] { function method(...) { ... } ... }
+struct ClassDef : Stmt {
+    ClassDef(std::string n, std::string parent, std::vector<StmtPtr> ms, SourcePos p)
+        : Stmt(NodeKind::ClassDef, p),
+          name(std::move(n)), parent(std::move(parent)), methods(std::move(ms)) {}
+    std::string          name;
+    std::string          parent;   // empty if no inheritance
+    std::vector<StmtPtr> methods;  // FuncDef nodes only
 };
 
 // ─── Top-level program ────────────────────────────────────────────────────────

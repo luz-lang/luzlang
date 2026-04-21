@@ -114,6 +114,8 @@ private:
             case TT_CONTINUE: advance(); return StmtPtr(new Continue(pos_of(t)));
             case TT_PASS:     advance(); return StmtPtr(new Pass(pos_of(t)));
             case TT_CONST:    return stmt_const();
+            case TT_STRUCT:   return stmt_struct();
+            case TT_CLASS:    return stmt_class();
             case TT_IDENTIFIER: return stmt_starting_with_ident();
             default:          return stmt_expr();
         }
@@ -245,6 +247,72 @@ private:
         return prm;
     }
 
+    // ── struct ────────────────────────────────────────────────────────────────
+    // struct Name { field: Type [= default], ... }
+    StmtPtr stmt_struct() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'struct'
+
+        const Token& name_tok = expect(TT_IDENTIFIER, "struct name");
+        std::string name = name_tok.value;
+
+        expect(TT_LBRACE, "'{'");
+
+        std::vector<StructField> fields;
+        while (!check(TT_RBRACE) && !at_end()) {
+            const Token& fname = expect(TT_IDENTIFIER, "field name");
+            expect(TT_COLON, "':'");
+            std::string type_name = parse_type_name();
+
+            ExprPtr def_val;
+            if (match(TT_ASSIGN)) {
+                def_val = expression();
+            }
+
+            StructField f;
+            f.name        = fname.value;
+            f.type_name   = type_name;
+            f.default_val = std::move(def_val);
+            fields.push_back(std::move(f));
+
+            match(TT_COMMA);  // optional separator between fields
+        }
+
+        expect(TT_RBRACE, "'}'");
+        return StmtPtr(new StructDef(name, std::move(fields), p));
+    }
+
+    // ── class ─────────────────────────────────────────────────────────────────
+    // class Name [extends Parent] { function method(...) { ... } ... }
+    StmtPtr stmt_class() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'class'
+
+        const Token& name_tok = expect(TT_IDENTIFIER, "class name");
+        std::string name = name_tok.value;
+
+        std::string parent;
+        if (match(TT_EXTENDS)) {
+            const Token& ptok = expect(TT_IDENTIFIER, "parent class name");
+            parent = ptok.value;
+        }
+
+        expect(TT_LBRACE, "'{'");
+
+        std::vector<StmtPtr> methods;
+        while (!check(TT_RBRACE) && !at_end()) {
+            if (!check(TT_FUNCTION)) {
+                throw ParseError(
+                    "expected 'function' inside class body",
+                    peek().line, peek().col);
+            }
+            methods.push_back(stmt_func_def());
+        }
+
+        expect(TT_RBRACE, "'}'");
+        return StmtPtr(new ClassDef(name, parent, std::move(methods), p));
+    }
+
     // ── return ────────────────────────────────────────────────────────────────
     StmtPtr stmt_return() {
         SourcePos p = pos_of(peek());
@@ -340,9 +408,35 @@ private:
     }
 
     // ── expression statement ─────────────────────────────────────────────────
+    // Also handles attribute assignment (obj.x = val) and index assignment
+    // (arr[i] = val) which are only detectable after parsing the lhs expression.
     StmtPtr stmt_expr() {
         SourcePos p = pos_of(peek());
         ExprPtr e = expression();
+
+        if (check(TT_ASSIGN)) {
+            advance();  // consume '='
+            ExprPtr val = expression();
+
+            if (e->kind == NodeKind::Attribute) {
+                auto* attr = static_cast<Attribute*>(e.get());
+                return StmtPtr(new AttrAssign(
+                    std::move(attr->object), attr->name, std::move(val), p));
+            }
+            if (e->kind == NodeKind::IndexAccess) {
+                auto* ia = static_cast<IndexAccess*>(e.get());
+                return StmtPtr(new IndexAssign(
+                    std::move(ia->base), std::move(ia->index), std::move(val), p));
+            }
+            // Any other lhs (e.g. bare identifier) is a plain assignment.
+            // Extract the name if it's an identifier, otherwise emit ExprStmt
+            // and let the typechecker reject it.
+            if (e->kind == NodeKind::Identifier) {
+                auto* id = static_cast<Identifier*>(e.get());
+                return StmtPtr(new Assign(id->name, std::move(val), p));
+            }
+        }
+
         return StmtPtr(new ExprStmt(std::move(e), p));
     }
 

@@ -225,6 +225,44 @@ void print_stmt(std::ostream& os, const Stmt& s, int ind) {
             print_block(os, n.body, ind + 4);
             break;
         }
+        case NodeKind::AttrAssign: {
+            const auto& n = static_cast<const AttrAssign&>(s);
+            os << "AttrAssign(." << n.attr << ")\n";
+            print_expr(os, *n.object, ind + 2);
+            print_expr(os, *n.value,  ind + 2);
+            break;
+        }
+        case NodeKind::IndexAssign: {
+            const auto& n = static_cast<const IndexAssign&>(s);
+            os << "IndexAssign\n";
+            print_expr(os, *n.base,  ind + 2);
+            print_expr(os, *n.index, ind + 2);
+            print_expr(os, *n.value, ind + 2);
+            break;
+        }
+        case NodeKind::StructDef: {
+            const auto& n = static_cast<const StructDef&>(s);
+            os << "StructDef(" << n.name << ")\n";
+            for (const auto& f : n.fields) {
+                print_indent(os, ind + 2);
+                os << f.name << ": " << f.type_name;
+                if (f.default_val) {
+                    os << " =\n";
+                    print_expr(os, *f.default_val, ind + 4);
+                } else {
+                    os << "\n";
+                }
+            }
+            break;
+        }
+        case NodeKind::ClassDef: {
+            const auto& n = static_cast<const ClassDef&>(s);
+            os << "ClassDef(" << n.name;
+            if (!n.parent.empty()) os << " extends " << n.parent;
+            os << ")\n";
+            for (const auto& m : n.methods) print_stmt(os, *m, ind + 2);
+            break;
+        }
         default:
             os << "<?stmt>\n"; break;
     }
