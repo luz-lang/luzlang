@@ -10,18 +10,13 @@
 namespace luz {
 namespace {
 
-// Recursive-descent parser over a flat token vector. Mirrors the precedence
-// ladder of luz/parser.py: or < and < not < comparison < additive <
-// multiplicative < power < unary < primary.
 class Parser {
 public:
     explicit Parser(const std::vector<Token>& tokens) : tokens_(tokens) {}
 
     Program parse_program() {
         Program p;
-        while (!at_end()) {
-            p.statements.push_back(expression());
-        }
+        p.statements = block_body();
         return p;
     }
 
@@ -29,34 +24,29 @@ private:
     const std::vector<Token>& tokens_;
     std::size_t               pos_ = 0;
 
+    // ── Token access ─────────────────────────────────────────────────────────
     const Token& peek(std::size_t offset = 0) const {
         std::size_t idx = pos_ + offset;
-        if (idx >= tokens_.size()) {
-            return tokens_.back();  // always TT_EOF
-        }
+        if (idx >= tokens_.size()) return tokens_.back();
         return tokens_[idx];
     }
-
     bool at_end() const { return peek().type == TT_EOF; }
 
     const Token& advance() {
         const Token& t = tokens_[pos_];
-        if (!at_end()) {
-            ++pos_;
-        }
+        if (!at_end()) ++pos_;
         return t;
     }
 
+    bool check(TokenType t) const { return peek().type == t; }
+
     bool match(TokenType t) {
-        if (peek().type == t) {
-            advance();
-            return true;
-        }
+        if (check(t)) { advance(); return true; }
         return false;
     }
 
     const Token& expect(TokenType t, const char* what) {
-        if (peek().type != t) {
+        if (!check(t)) {
             const Token& tok = peek();
             throw ParseError(
                 std::string("expected ") + what + ", got " + token_type_name(tok.type),
@@ -68,18 +58,300 @@ private:
     SourcePos pos_of(const Token& t) const { return {t.line, t.col}; }
 
     bool is_one_of(TokenType t, std::initializer_list<TokenType> ops) const {
-        for (TokenType c : ops) {
-            if (t == c) return true;
-        }
+        for (TokenType c : ops) { if (t == c) return true; }
         return false;
     }
 
-    // ── Precedence ladder ─────────────────────────────────────────────────────
-    ExprPtr expression()  { return logical_or(); }
+    // ── Type name parsing ─────────────────────────────────────────────────────
+    // Parses: TypeName  or  TypeName[TypeArg, ...]  or  TypeName?
+    std::string parse_type_name() {
+        if (!check(TT_IDENTIFIER) && !check(TT_NULL)) {
+            throw ParseError("expected type name", peek().line, peek().col);
+        }
+        std::string t = peek().value.empty()
+            ? std::string(token_type_name(peek().type))
+            : peek().value;
+        advance();
+        if (match(TT_LBRACKET)) {
+            t += '[';
+            t += parse_type_name();
+            while (match(TT_COMMA)) { t += ','; t += parse_type_name(); }
+            expect(TT_RBRACKET, "']'");
+            t += ']';
+        }
+        if (match(TT_QUESTION)) t += '?';
+        return t;
+    }
+
+    // ── Block body ────────────────────────────────────────────────────────────
+    // Parses zero or more statements until EOF or '}'.
+    Block block_body() {
+        Block stmts;
+        while (!at_end() && !check(TT_RBRACE)) {
+            stmts.push_back(statement());
+        }
+        return stmts;
+    }
+
+    // Consumes '{' stmts '}' and returns the body.
+    Block braced_block(const char* context) {
+        expect(TT_LBRACE, (std::string("'{'") + " after " + context).c_str());
+        Block body = block_body();
+        expect(TT_RBRACE, "'}'");
+        return body;
+    }
+
+    // ── Statement dispatch ────────────────────────────────────────────────────
+    StmtPtr statement() {
+        const Token& t = peek();
+        switch (t.type) {
+            case TT_IF:       return stmt_if();
+            case TT_WHILE:    return stmt_while();
+            case TT_FOR:      return stmt_for();
+            case TT_FUNCTION: return stmt_func_def();
+            case TT_RETURN:   return stmt_return();
+            case TT_BREAK:    advance(); return StmtPtr(new Break(pos_of(t)));
+            case TT_CONTINUE: advance(); return StmtPtr(new Continue(pos_of(t)));
+            case TT_PASS:     advance(); return StmtPtr(new Pass(pos_of(t)));
+            case TT_CONST:    return stmt_const();
+            case TT_IDENTIFIER: return stmt_starting_with_ident();
+            default:          return stmt_expr();
+        }
+    }
+
+    // ── if / elif / else ─────────────────────────────────────────────────────
+    StmtPtr stmt_if() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'if'
+        std::unique_ptr<If> node(new If(p));
+
+        {
+            IfBranch branch;
+            branch.condition = expression();
+            branch.body      = braced_block("if condition");
+            node->branches.push_back(std::move(branch));
+        }
+
+        while (check(TT_ELIF)) {
+            advance();  // consume 'elif'
+            IfBranch branch;
+            branch.condition = expression();
+            branch.body      = braced_block("elif condition");
+            node->branches.push_back(std::move(branch));
+        }
+
+        if (match(TT_ELSE)) {
+            node->else_body = braced_block("else");
+        }
+
+        return StmtPtr(std::move(node));
+    }
+
+    // ── while ─────────────────────────────────────────────────────────────────
+    StmtPtr stmt_while() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'while'
+        ExprPtr cond = expression();
+        Block   body = braced_block("while condition");
+        return StmtPtr(new While(std::move(cond), std::move(body), p));
+    }
+
+    // ── for ──────────────────────────────────────────────────────────────────
+    // Two forms:
+    //   for i = start to end { ... }       (numeric range)
+    //   for x in iterable { ... }          (for-each)
+    StmtPtr stmt_for() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'for'
+
+        if (!check(TT_IDENTIFIER)) {
+            throw ParseError("expected variable name after 'for'", peek().line, peek().col);
+        }
+        std::string var = peek().value;
+        advance();
+
+        // for x in iterable
+        if (match(TT_IN)) {
+            ExprPtr iterable = expression();
+            Block   body     = braced_block("for-each");
+            return StmtPtr(new ForEach(var, std::move(iterable), std::move(body), p));
+        }
+
+        // for i = start to end [step n]
+        expect(TT_ASSIGN, "'=' or 'in' after loop variable");
+        ExprPtr start = expression();
+        expect(TT_TO, "'to'");
+        ExprPtr end = expression();
+
+        ExprPtr step;
+        if (match(TT_STEP)) {
+            step = expression();
+        }
+
+        Block body = braced_block("for range");
+        return StmtPtr(new For(var, std::move(start), std::move(end), std::move(step), std::move(body), p));
+    }
+
+    // ── function ─────────────────────────────────────────────────────────────
+    StmtPtr stmt_func_def() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'function'
+
+        const Token& name_tok = expect(TT_IDENTIFIER, "function name");
+        std::string name = name_tok.value;
+
+        expect(TT_LPAREN, "'('");
+
+        std::vector<Param> params;
+        if (!check(TT_RPAREN)) {
+            params.push_back(parse_param());
+            while (match(TT_COMMA)) {
+                params.push_back(parse_param());
+                if (params.back().variadic) break;
+            }
+        }
+        expect(TT_RPAREN, "')'");
+
+        std::string return_type;
+        if (match(TT_ARROW)) {
+            return_type = parse_type_name();
+        }
+
+        Block body = braced_block("function body");
+        return StmtPtr(new FuncDef(name, std::move(params), return_type, std::move(body), p));
+    }
+
+    Param parse_param() {
+        Param prm;
+        if (match(TT_ELLIPSIS)) {
+            prm.variadic = true;
+            if (!check(TT_IDENTIFIER) && !check(TT_SELF)) {
+                throw ParseError("expected param name after '...'", peek().line, peek().col);
+            }
+        }
+        if (check(TT_SELF)) {
+            prm.name = "self";
+            advance();
+        } else {
+            const Token& t = expect(TT_IDENTIFIER, "parameter name");
+            prm.name = t.value;
+        }
+        if (match(TT_COLON)) {
+            prm.type_name = parse_type_name();
+        }
+        if (match(TT_ASSIGN)) {
+            prm.default_val = expression();
+        }
+        return prm;
+    }
+
+    // ── return ────────────────────────────────────────────────────────────────
+    StmtPtr stmt_return() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'return'
+        ExprPtr val;
+        // Only consume an expression if the next token can start one.
+        if (!at_end() && !check(TT_RBRACE)) {
+            val = expression();
+        }
+        return StmtPtr(new Return(std::move(val), p));
+    }
+
+    // ── const ─────────────────────────────────────────────────────────────────
+    StmtPtr stmt_const() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'const'
+
+        const Token& name_tok = expect(TT_IDENTIFIER, "constant name");
+        std::string name = name_tok.value;
+
+        std::string type_name;
+        if (match(TT_COLON)) {
+            type_name = parse_type_name();
+        }
+
+        expect(TT_ASSIGN, "'='");
+        ExprPtr val = expression();
+        return StmtPtr(new ConstDecl(name, type_name, std::move(val), p));
+    }
+
+    // ── identifier-led statements ─────────────────────────────────────────────
+    // Distinguishes between:
+    //   x = expr           plain assignment / new binding
+    //   x: type = expr     typed assignment
+    //   anything else      expression statement (call, etc.)
+    StmtPtr stmt_starting_with_ident() {
+        SourcePos p = pos_of(peek());
+        const std::string name = peek().value;
+
+        // x: type = expr
+        if (peek(1).type == TT_COLON) {
+            // Scan past type annotation to find '='.
+            std::size_t saved = pos_;
+            advance();  // consume identifier
+            advance();  // consume ':'
+            std::string type_name;
+            try { type_name = parse_type_name(); }
+            catch (...) { pos_ = saved; return stmt_expr(); }
+
+            if (!check(TT_ASSIGN)) {
+                pos_ = saved;
+                return stmt_expr();
+            }
+            advance();  // consume '='
+            ExprPtr val = expression();
+            return StmtPtr(new TypedAssign(name, type_name, std::move(val), p));
+        }
+
+        // x = expr
+        if (peek(1).type == TT_ASSIGN) {
+            advance();  // consume identifier
+            advance();  // consume '='
+            ExprPtr val = expression();
+            return StmtPtr(new Assign(name, std::move(val), p));
+        }
+
+        // x += expr  (and other compound operators) — desugar to Assign
+        if (is_one_of(peek(1).type, {TT_PLUS_ASSIGN, TT_MINUS_ASSIGN,
+                                      TT_MUL_ASSIGN, TT_DIV_ASSIGN,
+                                      TT_MOD_ASSIGN, TT_POW_ASSIGN})) {
+            advance();  // consume identifier
+            TokenType compound = peek().type;
+            SourcePos op_pos   = pos_of(peek());
+            advance();  // consume operator
+            ExprPtr rhs = expression();
+
+            BinOp bop;
+            switch (compound) {
+                case TT_PLUS_ASSIGN:  bop = BinOp::Add;      break;
+                case TT_MINUS_ASSIGN: bop = BinOp::Sub;      break;
+                case TT_MUL_ASSIGN:   bop = BinOp::Mul;      break;
+                case TT_DIV_ASSIGN:   bop = BinOp::Div;      break;
+                case TT_MOD_ASSIGN:   bop = BinOp::Mod;      break;
+                case TT_POW_ASSIGN:   bop = BinOp::Pow;      break;
+                default:              bop = BinOp::Add;      break;
+            }
+            ExprPtr lhs(new Identifier(name, p));
+            ExprPtr combined(new BinaryOp(bop, std::move(lhs), std::move(rhs), op_pos));
+            return StmtPtr(new Assign(name, std::move(combined), p));
+        }
+
+        return stmt_expr();
+    }
+
+    // ── expression statement ─────────────────────────────────────────────────
+    StmtPtr stmt_expr() {
+        SourcePos p = pos_of(peek());
+        ExprPtr e = expression();
+        return StmtPtr(new ExprStmt(std::move(e), p));
+    }
+
+    // ── Expression parsing (same precedence ladder as before) ────────────────
+    ExprPtr expression()       { return logical_or(); }
 
     ExprPtr logical_or() {
         ExprPtr lhs = logical_and();
-        while (peek().type == TT_OR) {
+        while (check(TT_OR)) {
             const Token& op = advance();
             ExprPtr rhs = logical_and();
             lhs.reset(new BinaryOp(BinOp::Or, std::move(lhs), std::move(rhs), pos_of(op)));
@@ -89,7 +361,7 @@ private:
 
     ExprPtr logical_and() {
         ExprPtr lhs = logical_not();
-        while (peek().type == TT_AND) {
+        while (check(TT_AND)) {
             const Token& op = advance();
             ExprPtr rhs = logical_not();
             lhs.reset(new BinaryOp(BinOp::And, std::move(lhs), std::move(rhs), pos_of(op)));
@@ -98,7 +370,7 @@ private:
     }
 
     ExprPtr logical_not() {
-        if (peek().type == TT_NOT) {
+        if (check(TT_NOT)) {
             const Token& op = advance();
             return ExprPtr(new UnaryOp(UnOp::Not, logical_not(), pos_of(op)));
         }
@@ -107,7 +379,7 @@ private:
 
     ExprPtr comparison() {
         ExprPtr lhs = additive();
-        while (is_one_of(peek().type, {TT_EE, TT_NE, TT_LT, TT_GT, TT_LTE, TT_GTE})) {
+        while (is_one_of(peek().type, {TT_EE,TT_NE,TT_LT,TT_GT,TT_LTE,TT_GTE})) {
             const Token& op = advance();
             BinOp bop;
             switch (op.type) {
@@ -117,7 +389,7 @@ private:
                 case TT_GT:  bop = BinOp::Gt; break;
                 case TT_LTE: bop = BinOp::Le; break;
                 case TT_GTE: bop = BinOp::Ge; break;
-                default:     bop = BinOp::Eq; break;  // unreachable
+                default:     bop = BinOp::Eq; break;
             }
             ExprPtr rhs = additive();
             lhs.reset(new BinaryOp(bop, std::move(lhs), std::move(rhs), pos_of(op)));
@@ -154,10 +426,9 @@ private:
         return lhs;
     }
 
-    // Right-associative: a ** b ** c = a ** (b ** c).
     ExprPtr power() {
         ExprPtr lhs = unary();
-        if (peek().type == TT_POW) {
+        if (check(TT_POW)) {
             const Token& op = advance();
             ExprPtr rhs = power();
             return ExprPtr(new BinaryOp(BinOp::Pow, std::move(lhs), std::move(rhs), pos_of(op)));
@@ -166,20 +437,19 @@ private:
     }
 
     ExprPtr unary() {
-        if (peek().type == TT_MINUS) {
+        if (check(TT_MINUS)) {
             const Token& op = advance();
             return ExprPtr(new UnaryOp(UnOp::Neg, unary(), pos_of(op)));
         }
         return call();
     }
 
-    // call = primary ( "(" args ")" )*
     ExprPtr call() {
         ExprPtr expr = primary();
-        while (peek().type == TT_LPAREN) {
+        while (check(TT_LPAREN)) {
             const Token& lparen = advance();
             std::vector<ExprPtr> args;
-            if (peek().type != TT_RPAREN) {
+            if (!check(TT_RPAREN)) {
                 args.push_back(expression());
                 while (match(TT_COMMA)) {
                     args.push_back(expression());
@@ -194,18 +464,15 @@ private:
     ExprPtr primary() {
         const Token& t = peek();
         switch (t.type) {
-            case TT_INT: {
+            case TT_INT:
                 advance();
                 return ExprPtr(new IntLit(std::strtoll(t.value.c_str(), nullptr, 10), pos_of(t)));
-            }
-            case TT_FLOAT: {
+            case TT_FLOAT:
                 advance();
                 return ExprPtr(new FloatLit(std::strtod(t.value.c_str(), nullptr), pos_of(t)));
-            }
-            case TT_STRING: {
+            case TT_STRING:
                 advance();
                 return ExprPtr(new StringLit(t.value, pos_of(t)));
-            }
             case TT_TRUE:
                 advance();
                 return ExprPtr(new BoolLit(true, pos_of(t)));
@@ -215,10 +482,12 @@ private:
             case TT_NULL:
                 advance();
                 return ExprPtr(new NullLit(pos_of(t)));
-            case TT_IDENTIFIER: {
+            case TT_IDENTIFIER:
                 advance();
                 return ExprPtr(new Identifier(t.value, pos_of(t)));
-            }
+            case TT_SELF:
+                advance();
+                return ExprPtr(new Identifier("self", pos_of(t)));
             case TT_LPAREN: {
                 advance();
                 ExprPtr inner = expression();

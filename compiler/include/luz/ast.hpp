@@ -8,39 +8,62 @@
 
 namespace luz {
 
+// ─── Source position ────────────────────────────────────────────────────────
 struct SourcePos {
     int line = 0;
     int col  = 0;
 };
 
+// ─── Expression hierarchy ────────────────────────────────────────────────────
 enum class NodeKind {
+    // Expressions
     IntLit, FloatLit, StringLit, BoolLit, NullLit,
     Identifier,
     UnaryOp, BinaryOp,
-    Call
+    Call,
+    // Statements
+    ExprStmt,
+    Assign,         // x = expr  (new binding or reassignment)
+    TypedAssign,    // x: type = expr
+    ConstDecl,      // const x = expr  or  const x: type = expr
+    CompoundAssign, // x += expr  (desugared to Assign at printer/codegen level)
+    Block,          // { stmts... }
+    If,
+    While,
+    For,            // for i = start to end { block }
+    ForEach,        // for x in iterable { block }
+    Break, Continue, Pass,
+    Return,
+    FuncDef,
 };
 
-enum class UnOp { Neg, Not };
-
+enum class UnOp  { Neg, Not };
 enum class BinOp {
     Add, Sub, Mul, Div, FloorDiv, Mod, Pow,
     Eq, Ne, Lt, Gt, Le, Ge,
     And, Or
 };
 
-// Abstract base for every expression. Owning the children through unique_ptr
-// keeps the tree acyclic and destruction deterministic. Prefer downcast via
-// the explicit `kind` tag over RTTI.
+// Abstract base for expression nodes.
 struct Expr {
     explicit Expr(NodeKind k, SourcePos p) : kind(k), pos(p) {}
     virtual ~Expr() = default;
-
     NodeKind  kind;
     SourcePos pos;
 };
-
 using ExprPtr = std::unique_ptr<Expr>;
 
+// Abstract base for statement nodes.
+struct Stmt {
+    explicit Stmt(NodeKind k, SourcePos p) : kind(k), pos(p) {}
+    virtual ~Stmt() = default;
+    NodeKind  kind;
+    SourcePos pos;
+};
+using StmtPtr = std::unique_ptr<Stmt>;
+using Block   = std::vector<StmtPtr>;
+
+// ─── Expression nodes ────────────────────────────────────────────────────────
 struct IntLit : Expr {
     IntLit(std::int64_t v, SourcePos p) : Expr(NodeKind::IntLit, p), value(v) {}
     std::int64_t value;
@@ -94,11 +117,119 @@ struct Call : Expr {
     std::vector<ExprPtr> args;
 };
 
-// Top-level program: a flat list of expression statements for now.
-// Statements (let, if, while, function, class) will be added as the parser
-// grows beyond expressions.
+// ─── Statement nodes ─────────────────────────────────────────────────────────
+
+// An expression used as a statement (most commonly a function call).
+struct ExprStmt : Stmt {
+    ExprStmt(ExprPtr e, SourcePos p)
+        : Stmt(NodeKind::ExprStmt, p), expr(std::move(e)) {}
+    ExprPtr expr;
+};
+
+// x = value  (first binding or reassignment — Luz has no explicit `let`)
+struct Assign : Stmt {
+    Assign(std::string n, ExprPtr v, SourcePos p)
+        : Stmt(NodeKind::Assign, p), name(std::move(n)), value(std::move(v)) {}
+    std::string name;
+    ExprPtr     value;
+};
+
+// x: TypeName = value
+struct TypedAssign : Stmt {
+    TypedAssign(std::string n, std::string t, ExprPtr v, SourcePos p)
+        : Stmt(NodeKind::TypedAssign, p),
+          name(std::move(n)), type_name(std::move(t)), value(std::move(v)) {}
+    std::string name;
+    std::string type_name;
+    ExprPtr     value;
+};
+
+// const x = value  or  const x: TypeName = value
+struct ConstDecl : Stmt {
+    ConstDecl(std::string n, std::string t, ExprPtr v, SourcePos p)
+        : Stmt(NodeKind::ConstDecl, p),
+          name(std::move(n)), type_name(std::move(t)), value(std::move(v)) {}
+    std::string name;
+    std::string type_name;  // empty if no annotation
+    ExprPtr     value;
+};
+
+// if (cond) { block } elif (cond) { block }* else { block }?
+struct IfBranch {
+    ExprPtr condition;
+    Block   body;
+};
+
+struct If : Stmt {
+    explicit If(SourcePos p) : Stmt(NodeKind::If, p) {}
+    std::vector<IfBranch> branches;   // if + elif branches in order
+    Block                 else_body;  // empty if no else
+};
+
+// while cond { block }
+struct While : Stmt {
+    While(ExprPtr c, Block b, SourcePos p)
+        : Stmt(NodeKind::While, p), condition(std::move(c)), body(std::move(b)) {}
+    ExprPtr condition;
+    Block   body;
+};
+
+// for i = start to end { block }  (step optional)
+struct For : Stmt {
+    For(std::string v, ExprPtr s, ExprPtr e, ExprPtr st, Block b, SourcePos p)
+        : Stmt(NodeKind::For, p),
+          var(std::move(v)), start(std::move(s)), end(std::move(e)),
+          step(std::move(st)), body(std::move(b)) {}
+    std::string var;
+    ExprPtr     start;
+    ExprPtr     end;
+    ExprPtr     step;  // nullptr = default step 1
+    Block       body;
+};
+
+// for x in iterable { block }
+struct ForEach : Stmt {
+    ForEach(std::string v, ExprPtr it, Block b, SourcePos p)
+        : Stmt(NodeKind::ForEach, p),
+          var(std::move(v)), iterable(std::move(it)), body(std::move(b)) {}
+    std::string var;
+    ExprPtr     iterable;
+    Block       body;
+};
+
+struct Break    : Stmt { explicit Break   (SourcePos p) : Stmt(NodeKind::Break,    p) {} };
+struct Continue : Stmt { explicit Continue(SourcePos p) : Stmt(NodeKind::Continue, p) {} };
+struct Pass     : Stmt { explicit Pass    (SourcePos p) : Stmt(NodeKind::Pass,     p) {} };
+
+// return expr?
+struct Return : Stmt {
+    Return(ExprPtr v, SourcePos p) : Stmt(NodeKind::Return, p), value(std::move(v)) {}
+    ExprPtr value;  // nullptr for bare `return`
+};
+
+// Typed parameter: name + optional type annotation + optional default
+struct Param {
+    std::string name;
+    std::string type_name;  // empty if not annotated
+    ExprPtr     default_val;  // nullptr if required
+    bool        variadic = false;
+};
+
+// function name(params...) -> ReturnType { block }
+struct FuncDef : Stmt {
+    FuncDef(std::string n, std::vector<Param> ps, std::string rt, Block b, SourcePos p)
+        : Stmt(NodeKind::FuncDef, p),
+          name(std::move(n)), params(std::move(ps)),
+          return_type(std::move(rt)), body(std::move(b)) {}
+    std::string        name;
+    std::vector<Param> params;
+    std::string        return_type;  // empty if not annotated
+    Block              body;
+};
+
+// ─── Top-level program ────────────────────────────────────────────────────────
 struct Program {
-    std::vector<ExprPtr> statements;
+    Block statements;
 };
 
 }  // namespace luz
