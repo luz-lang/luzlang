@@ -95,6 +95,27 @@ void print_expr(std::ostream& os, const Expr& e, int ind) {
             }
             break;
         }
+        case NodeKind::Lambda: {
+            const auto& n = static_cast<const Lambda&>(e);
+            os << "Lambda\n";
+            if (!n.params.empty()) {
+                print_indent(os, ind + 2); os << "params:";
+                for (const auto& pm : n.params) {
+                    os << " " << pm.name;
+                    if (!pm.type_name.empty()) os << ":" << pm.type_name;
+                    if (pm.variadic) os << "...";
+                }
+                os << "\n";
+            }
+            if (n.expr_body) {
+                print_indent(os, ind + 2); os << "=>\n";
+                print_expr(os, *n.expr_body, ind + 4);
+            } else {
+                print_indent(os, ind + 2); os << "body:\n";
+                print_block(os, n.block_body, ind + 4);
+            }
+            break;
+        }
         case NodeKind::FStringLit: {
             const auto& n = static_cast<const FStringLit&>(e);
             os << "FString\n";

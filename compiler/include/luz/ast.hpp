@@ -50,6 +50,7 @@ enum class NodeKind {
     Alert,        // alert expr
     Switch,       // switch expr { case v { } ... else { } }
     Match,        // match expr { v => expr  _ => expr }  (expression)
+    Lambda,       // fn(params) => expr  or  fn(params) { body }
 };
 
 enum class UnOp  { Neg, Not };
@@ -271,6 +272,17 @@ struct FuncDef : Stmt {
     std::vector<Param> params;
     std::string        return_type;  // empty if not annotated
     Block              body;
+};
+
+// fn(params) => expr      (short: expr_body non-null, block_body empty)
+// fn(params) { body }     (long:  expr_body null,     block_body non-empty)
+struct Lambda : Expr {
+    Lambda(std::vector<Param> ps, ExprPtr eb, Block bb, SourcePos p)
+        : Expr(NodeKind::Lambda, p),
+          params(std::move(ps)), expr_body(std::move(eb)), block_body(std::move(bb)) {}
+    std::vector<Param> params;
+    ExprPtr            expr_body;   // non-null for short form
+    Block              block_body;  // non-empty for long form
 };
 
 // expr.name = value

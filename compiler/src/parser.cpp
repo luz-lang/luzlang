@@ -358,6 +358,43 @@ private:
         return ExprPtr(new Match(std::move(subject), std::move(arms), p));
     }
 
+    // ── lambda / anonymous function ──────────────────────────────────────────
+    // fn(params) => expr       short form (implicit return)
+    // fn(params) { body }      long form  (block body)
+    ExprPtr expr_lambda() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'fn'
+        expect(TT_LPAREN, "'(' after 'fn'");
+
+        std::vector<Param> params;
+        if (!check(TT_RPAREN)) {
+            do {
+                Param pm;
+                pm.variadic = match(TT_MUL);
+                pm.name = expect(TT_IDENTIFIER, "parameter name").value;
+                if (match(TT_COLON)) pm.type_name = parse_type_name();
+                if (match(TT_ASSIGN)) pm.default_val = expression();
+                params.push_back(std::move(pm));
+            } while (match(TT_COMMA) && !check(TT_RPAREN));
+        }
+        expect(TT_RPAREN, "')'");
+
+        if (match(TT_ARROW)) {
+            // Short form: fn(x) => expr
+            ExprPtr body = expression();
+            Block empty;
+            return ExprPtr(new Lambda(std::move(params), std::move(body), std::move(empty), p));
+        }
+
+        if (check(TT_LBRACE)) {
+            // Long form: fn(x) { body }
+            Block body = braced_block("fn parameters");
+            return ExprPtr(new Lambda(std::move(params), ExprPtr(), std::move(body), p));
+        }
+
+        throw ParseError("expected '=>' or '{' after lambda parameters", peek().line, peek().col);
+    }
+
     // ── f-string ─────────────────────────────────────────────────────────────
     // The lexer has already stripped the $"..." delimiters and stored the raw
     // template in the token value, e.g. "Hello {name}, count={1+2}".
@@ -826,6 +863,8 @@ private:
                 expect(TT_RBRACE, "'}'");
                 return ExprPtr(new DictLit(std::move(pairs), lp));
             }
+            case TT_FN:
+                return expr_lambda();
             default:
                 throw ParseError(
                     std::string("unexpected token ") + token_type_name(t.type),
