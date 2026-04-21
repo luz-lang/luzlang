@@ -45,6 +45,7 @@ enum class NodeKind {
     IndexAssign,  // expr[idx]  = value
     Import,       // import "path" [as alias]
                   // from "path" import name, ...
+    FStringLit,   // $"text {expr} text"
 };
 
 enum class UnOp  { Neg, Not };
@@ -286,6 +287,36 @@ struct IndexAssign : Stmt {
     ExprPtr base;
     ExprPtr index;
     ExprPtr value;
+};
+
+// A single part of an f-string: either a literal text segment or an
+// interpolated expression. Using a tagged struct because std::variant
+// requires C++17 stdlib (not available on all target toolchains yet).
+struct FStringPart {
+    enum class Kind { Text, Expr };
+    Kind        kind;
+    std::string text;  // Kind::Text
+    ExprPtr     expr;  // Kind::Expr
+
+    static FStringPart make_text(std::string t) {
+        FStringPart p;
+        p.kind = Kind::Text;
+        p.text = std::move(t);
+        return p;
+    }
+    static FStringPart make_expr(ExprPtr e) {
+        FStringPart p;
+        p.kind = Kind::Expr;
+        p.expr = std::move(e);
+        return p;
+    }
+};
+
+// $"Hello {name}, you have {count} messages"
+struct FStringLit : Expr {
+    FStringLit(std::vector<FStringPart> ps, SourcePos p)
+        : Expr(NodeKind::FStringLit, p), parts(std::move(ps)) {}
+    std::vector<FStringPart> parts;
 };
 
 // import "path" [as alias]

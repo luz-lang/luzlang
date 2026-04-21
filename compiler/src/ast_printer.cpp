@@ -77,6 +77,20 @@ void print_expr(std::ostream& os, const Expr& e, int ind) {
             }
             break;
         }
+        case NodeKind::FStringLit: {
+            const auto& n = static_cast<const FStringLit&>(e);
+            os << "FString\n";
+            for (const auto& p : n.parts) {
+                if (p.kind == FStringPart::Kind::Text) {
+                    print_indent(os, ind + 2);
+                    os << "Text(\"" << p.text << "\")\n";
+                } else {
+                    print_indent(os, ind + 2); os << "Interp:\n";
+                    print_expr(os, *p.expr, ind + 4);
+                }
+            }
+            break;
+        }
         case NodeKind::ListLit: {
             const auto& n = static_cast<const ListLit&>(e);
             os << "List[" << n.elements.size() << "]\n";

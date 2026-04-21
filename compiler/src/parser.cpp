@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "luz/diagnostics.hpp"
+#include "luz/lexer.hpp"
 
 namespace luz {
 namespace {
@@ -247,6 +248,46 @@ private:
             prm.default_val = expression();
         }
         return prm;
+    }
+
+    // ── f-string ─────────────────────────────────────────────────────────────
+    // The lexer has already stripped the $"..." delimiters and stored the raw
+    // template in the token value, e.g. "Hello {name}, count={1+2}".
+    // We scan it character-by-character: plain text goes into Text parts,
+    // {expr} regions are re-lexed and re-parsed into Expr parts.
+    ExprPtr parse_fstring(const Token& tok) {
+        const std::string& raw = tok.value;
+        std::vector<FStringPart> parts;
+        std::size_t i = 0;
+
+        while (i < raw.size()) {
+            if (raw[i] == '{') {
+                // Find matching '}', tracking nesting depth.
+                int depth = 1;
+                std::size_t j = i + 1;
+                while (j < raw.size() && depth > 0) {
+                    if (raw[j] == '{') ++depth;
+                    else if (raw[j] == '}') --depth;
+                    ++j;
+                }
+                // raw[i+1 .. j-2] is the expression text.
+                std::string expr_src = raw.substr(i + 1, j - i - 2);
+                auto sub_tokens = lex(expr_src);
+                // Re-parse as a single expression using a nested Parser.
+                Parser sub(sub_tokens);
+                ExprPtr e = sub.expression();
+                parts.push_back(FStringPart::make_expr(std::move(e)));
+                i = j;
+            } else {
+                // Collect literal text up to the next '{'.
+                std::size_t j = i;
+                while (j < raw.size() && raw[j] != '{') ++j;
+                parts.push_back(FStringPart::make_text(raw.substr(i, j - i)));
+                i = j;
+            }
+        }
+
+        return ExprPtr(new FStringLit(std::move(parts), pos_of(tok)));
     }
 
     // ── import ────────────────────────────────────────────────────────────────
@@ -619,6 +660,9 @@ private:
             case TT_STRING:
                 advance();
                 return ExprPtr(new StringLit(t.value, pos_of(t)));
+            case TT_FSTRING:
+                advance();
+                return parse_fstring(t);
             case TT_TRUE:
                 advance();
                 return ExprPtr(new BoolLit(true, pos_of(t)));
