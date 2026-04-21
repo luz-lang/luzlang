@@ -43,6 +43,8 @@ enum class NodeKind {
     ClassDef,
     AttrAssign,   // expr.name = value
     IndexAssign,  // expr[idx]  = value
+    Import,       // import "path" [as alias]
+                  // from "path" import name, ...
 };
 
 enum class UnOp  { Neg, Not };
@@ -284,6 +286,17 @@ struct IndexAssign : Stmt {
     ExprPtr base;
     ExprPtr index;
     ExprPtr value;
+};
+
+// import "path" [as alias]
+// from "path" import name, name2, ...
+struct Import : Stmt {
+    Import(std::string path, std::string alias, std::vector<std::string> names, SourcePos p)
+        : Stmt(NodeKind::Import, p),
+          path(std::move(path)), alias(std::move(alias)), names(std::move(names)) {}
+    std::string              path;   // module path string
+    std::string              alias;  // empty unless `import "x" as alias`
+    std::vector<std::string> names;  // non-empty only for `from "x" import a, b`
 };
 
 // struct Name { field: Type [= default], ... }

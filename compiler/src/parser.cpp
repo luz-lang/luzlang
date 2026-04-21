@@ -116,6 +116,8 @@ private:
             case TT_CONST:    return stmt_const();
             case TT_STRUCT:   return stmt_struct();
             case TT_CLASS:    return stmt_class();
+            case TT_IMPORT:   return stmt_import();
+            case TT_FROM:     return stmt_from_import();
             case TT_IDENTIFIER: return stmt_starting_with_ident();
             default:          return stmt_expr();
         }
@@ -245,6 +247,44 @@ private:
             prm.default_val = expression();
         }
         return prm;
+    }
+
+    // ── import ────────────────────────────────────────────────────────────────
+    // import "path"
+    // import "path" as alias
+    StmtPtr stmt_import() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'import'
+        const Token& path_tok = expect(TT_STRING, "module path string");
+        std::string path = path_tok.value;
+
+        std::string alias;
+        if (match(TT_AS)) {
+            const Token& a = expect(TT_IDENTIFIER, "alias name");
+            alias = a.value;
+        }
+
+        return StmtPtr(new Import(path, alias, {}, p));
+    }
+
+    // from "path" import name, name2, ...
+    StmtPtr stmt_from_import() {
+        SourcePos p = pos_of(peek());
+        advance();  // consume 'from'
+        const Token& path_tok = expect(TT_STRING, "module path string");
+        std::string path = path_tok.value;
+
+        expect(TT_IMPORT, "'import'");
+
+        std::vector<std::string> names;
+        const Token& first = expect(TT_IDENTIFIER, "name to import");
+        names.push_back(first.value);
+        while (match(TT_COMMA)) {
+            const Token& n = expect(TT_IDENTIFIER, "name to import");
+            names.push_back(n.value);
+        }
+
+        return StmtPtr(new Import(path, {}, std::move(names), p));
     }
 
     // ── struct ────────────────────────────────────────────────────────────────

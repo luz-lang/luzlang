@@ -225,6 +225,19 @@ void print_stmt(std::ostream& os, const Stmt& s, int ind) {
             print_block(os, n.body, ind + 4);
             break;
         }
+        case NodeKind::Import: {
+            const auto& n = static_cast<const Import&>(s);
+            if (!n.names.empty()) {
+                os << "From(\"" << n.path << "\") import";
+                for (const auto& nm : n.names) os << " " << nm;
+                os << "\n";
+            } else {
+                os << "Import(\"" << n.path << "\"";
+                if (!n.alias.empty()) os << " as " << n.alias;
+                os << ")\n";
+            }
+            break;
+        }
         case NodeKind::AttrAssign: {
             const auto& n = static_cast<const AttrAssign&>(s);
             os << "AttrAssign(." << n.attr << ")\n";
