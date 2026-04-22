@@ -33,6 +33,7 @@ add_executable(luzc
     src/parser.cpp
     src/ast_printer.cpp
     src/diagnostics.cpp
+    src/typechecker.cpp
 )
 
 target_include_directories(luzc PRIVATE

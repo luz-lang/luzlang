@@ -15,6 +15,7 @@
 #include "luz/diagnostics.hpp"
 #include "luz/lexer.hpp"
 #include "luz/parser.hpp"
+#include "luz/typechecker.hpp"
 
 namespace {
 
@@ -28,6 +29,7 @@ void print_usage() {
         "  luzc <file.luz>            compile + run (not yet implemented)\n"
         "  luzc <file.luz> --tokens   dump token stream\n"
         "  luzc <file.luz> --ast      dump parsed AST\n"
+        "  luzc <file.luz> --check    run type checker and report errors\n"
         "  luzc --version             print version\n"
         "  luzc --help                show this message\n";
 }
@@ -62,6 +64,21 @@ int cmd_ast(const std::string& source) {
     return 0;
 }
 
+int cmd_check(const std::string& source, const std::string& file) {
+    auto tokens  = luz::lex(source);
+    auto program = luz::parse(tokens);
+    auto errors  = luz::type_check(program);
+    if (errors.empty()) {
+        std::cout << "No type errors found.\n";
+        return 0;
+    }
+    for (auto& e : errors) {
+        std::cerr << file << ':' << e.line << ':' << e.col
+                  << ": " << e.kind << ": " << e.message << '\n';
+    }
+    return 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -84,6 +101,7 @@ int main(int argc, char** argv) {
 
         if (mode == "--tokens") return cmd_tokens(source);
         if (mode == "--ast")    return cmd_ast(source);
+        if (mode == "--check")  return cmd_check(source, file);
 
         std::cerr << "luzc: backend not yet implemented -- try --tokens or --ast\n";
         return 2;
