@@ -13,6 +13,7 @@
 
 #include "luz/ast_printer.hpp"
 #include "luz/diagnostics.hpp"
+#include "luz/hir.hpp"
 #include "luz/lexer.hpp"
 #include "luz/parser.hpp"
 #include "luz/typechecker.hpp"
@@ -30,6 +31,7 @@ void print_usage() {
         "  luzc <file.luz> --tokens   dump token stream\n"
         "  luzc <file.luz> --ast      dump parsed AST\n"
         "  luzc <file.luz> --check    run type checker and report errors\n"
+        "  luzc <file.luz> --hir      dump lowered HIR\n"
         "  luzc --version             print version\n"
         "  luzc --help                show this message\n";
 }
@@ -61,6 +63,14 @@ int cmd_ast(const std::string& source) {
     auto tokens  = luz::lex(source);
     auto program = luz::parse(tokens);
     luz::print_ast(std::cout, program);
+    return 0;
+}
+
+int cmd_hir(const std::string& source) {
+    auto tokens  = luz::lex(source);
+    auto program = luz::parse(tokens);
+    auto hir     = luz::lower_to_hir(program);
+    luz::print_hir(std::cout, hir);
     return 0;
 }
 
@@ -101,6 +111,7 @@ int main(int argc, char** argv) {
 
         if (mode == "--tokens") return cmd_tokens(source);
         if (mode == "--ast")    return cmd_ast(source);
+        if (mode == "--hir")    return cmd_hir(source);
         if (mode == "--check")  return cmd_check(source, file);
 
         std::cerr << "luzc: backend not yet implemented -- try --tokens or --ast\n";

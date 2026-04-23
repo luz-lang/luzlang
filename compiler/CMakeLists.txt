@@ -34,6 +34,7 @@ add_executable(luzc
     src/ast_printer.cpp
     src/diagnostics.cpp
     src/typechecker.cpp
+    src/hir.cpp
 )
 
 target_include_directories(luzc PRIVATE
