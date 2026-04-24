@@ -35,6 +35,7 @@ add_executable(luzc
     src/diagnostics.cpp
     src/typechecker.cpp
     src/hir.cpp
+    src/codegen.cpp
 )
 
 target_include_directories(luzc PRIVATE

@@ -23,6 +23,7 @@ target_sources(luz_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/diagnostics.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/typechecker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/hir.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/codegen.cpp
 )
 
 include(CTest)
