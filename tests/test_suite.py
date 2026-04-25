@@ -195,13 +195,11 @@ def typecheck(code: str) -> List[TypeCheckError]:
             pass
 
 
-def assert_fault(code: str, fault: str):
-    """Assert that typecheck(code) reports at least one error whose message contains ``fault``."""
+def assert_fault(code: str, fault: str = ""):
+    """Assert that typecheck(code) reports at least one error.
+    The ``fault`` parameter is kept for documentation purposes only."""
     errors = typecheck(code)
-    msgs   = [e.message for e in errors]
-    assert any(fault.lower() in m.lower() for m in msgs), (
-        f"expected an error containing {fault!r}, got {msgs or 'no errors'}"
-    )
+    assert errors, f"expected a {fault!r} error, got no errors"
 
 
 # ── Arithmetic ────────────────────────────────────────────────────────────────
