@@ -61,13 +61,17 @@ std::string HirLiteral::type_str() const {
 class Lowering {
 public:
     HirBlock lower_program(const Program& prog) {
-        HirBlock out;
-        for (auto& s : prog.statements) lower_stmt(s.get(), out);
-        return out;
+        // Pre-scan: collect struct names so instantiation can be detected
+        for (auto& s : prog.statements) {
+            if (s->kind == NodeKind::StructDef)
+                struct_names_.insert(static_cast<const StructDef*>(s.get())->name);
+        }
+        return lower_block(prog.statements);
     }
 
 private:
     int temp_counter_ = 0;
+    std::unordered_set<std::string> struct_names_;
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -89,10 +93,62 @@ private:
         return std::make_unique<HirBinOp>(std::move(op), std::move(l), std::move(r), std::move(t));
     }
 
-    // Build a HirBlock from a Block (vector of StmtPtr)
+    // Build a HirBlock from a Block (vector of StmtPtr).
+    // Special case: fuse struct instantiation pattern
+    //   TypedAssign(name: StructType = StructName)
+    //   ExprStmt(DictLit{Ident(field): val, ...})
+    // into a single HirLet with a proper HirDict (string keys).
     HirBlock lower_block(const Block& stmts) {
         HirBlock out;
-        for (auto& s : stmts) lower_stmt(s.get(), out);
+        for (std::size_t i = 0; i < stmts.size(); ++i) {
+            auto* s = stmts[i].get();
+
+            // Detect struct init: TypedAssign where type is a known struct
+            // and value is just Ident(StructName)
+            if (s->kind == NodeKind::TypedAssign) {
+                auto* ta = static_cast<const TypedAssign*>(s);
+                if (struct_names_.count(ta->type_name) &&
+                    ta->value && ta->value->kind == NodeKind::Identifier &&
+                    static_cast<const Identifier*>(ta->value.get())->name == ta->type_name &&
+                    i + 1 < stmts.size()) {
+
+                    // Peek at next stmt — must be ExprStmt(DictLit{Ident: val})
+                    auto* next = stmts[i + 1].get();
+                    if (next->kind == NodeKind::ExprStmt) {
+                        auto* es = static_cast<const ExprStmt*>(next);
+                        if (es->expr && es->expr->kind == NodeKind::DictLit) {
+                            auto* dl = static_cast<const DictLit*>(es->expr.get());
+                            // Confirm all keys are Ident nodes (field names)
+                            bool all_ident = true;
+                            for (auto& p : dl->pairs) {
+                                if (!p.key || p.key->kind != NodeKind::Identifier) {
+                                    all_ident = false; break;
+                                }
+                            }
+                            if (all_ident) {
+                                // Build HirDict with string literal keys
+                                std::vector<HirDictPair> pairs;
+                                for (auto& p : dl->pairs) {
+                                    std::string fname = static_cast<const Identifier*>(
+                                        p.key.get())->name;
+                                    HirDictPair hp;
+                                    hp.key   = HirLiteral::make_string(fname);
+                                    hp.value = lower_expr(p.value.get());
+                                    pairs.push_back(std::move(hp));
+                                }
+                                auto dict_node = std::make_unique<HirDict>(std::move(pairs));
+                                out.push_back(std::make_unique<HirLet>(
+                                    ta->name, ta->type_name, std::move(dict_node)));
+                                ++i; // skip the dict stmt
+                                continue;
+                            }
+                        }
+                    }
+                }
+            }
+
+            lower_stmt(s, out);
+        }
         return out;
     }
 

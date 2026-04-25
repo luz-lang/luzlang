@@ -82,9 +82,10 @@ public:
         // Separate top-level nodes by kind
         std::vector<HirNode*> classes, funcs, stmts;
         for (auto& n : program) {
-            if      (n->kind == HirKind::ClassDef) classes.push_back(n.get());
-            else if (n->kind == HirKind::FuncDef)  funcs.push_back(n.get());
-            else                                   stmts.push_back(n.get());
+            if      (n->kind == HirKind::ClassDef)  classes.push_back(n.get());
+            else if (n->kind == HirKind::FuncDef)   funcs.push_back(n.get());
+            else if (n->kind == HirKind::StructDef) { /* type info only, no IR to emit */ }
+            else                                    stmts.push_back(n.get());
         }
 
         // Emit class methods before free functions
@@ -198,6 +199,16 @@ private:
     }
 
     void collect_classes(const HirBlock& program) {
+        // Collect structs: build ClassInfo with field types from definition
+        for (auto& n : program) {
+            if (n->kind != HirKind::StructDef) continue;
+            auto* s = static_cast<HirStructDef*>(n.get());
+            ClassInfo info;
+            for (auto& f : s->fields)
+                info.field_types[f.name] = llvm_type(f.type);
+            classes_[s->name] = std::move(info);
+        }
+        // Collect classes
         for (auto& n : program) {
             if (n->kind != HirKind::ClassDef) continue;
             auto* cls = static_cast<HirClassDef*>(n.get());
