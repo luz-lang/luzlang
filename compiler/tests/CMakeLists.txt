@@ -6,6 +6,7 @@ add_executable(luz_tests
     test_parser.cpp
     test_typechecker.cpp
     test_hir.cpp
+    test_e2e.cpp
 )
 
 target_include_directories(luz_tests PRIVATE
