@@ -28,6 +28,7 @@ std::string llvm_type(const std::string& hir_type) {
     if (hir_type == "float" || hir_type == "float?" ) return "double";
     if (hir_type == "bool"  || hir_type == "bool?"  ) return "i1";
     if (hir_type == "string"|| hir_type == "string?") return "i8*";
+    if (hir_type == "dict"  || hir_type == "list"   ) return "i8*";
     if (hir_type == "void"  || hir_type.empty()     ) return "void";
     return "i64";  // user-defined / unknown → treat as opaque i64
 }
@@ -119,7 +120,7 @@ private:
     // Per-function state (reset on each function)
     int tmp_id_   = 0;
     int label_id_ = 0;
-    struct AllocaInfo { std::string ptr; std::string type; };
+    struct AllocaInfo { std::string ptr; std::string type; std::string hir_type; };
     std::unordered_map<std::string, AllocaInfo> locals_;
     struct LoopInfo { std::string cond_lbl; std::string exit_lbl; };
     std::vector<LoopInfo> loop_stack_;
@@ -246,6 +247,21 @@ private:
             << "declare i64  @luz_str_len(i8*)\n"
             << "declare i1   @luz_str_eq(i8*, i8*)\n"
             << "declare i1   @luz_str_contains(i8*, i8*)\n\n";
+
+        // Dict runtime
+        final_out_
+            << "declare i8*  @luz_dict_new()\n"
+            << "declare void @luz_dict_set_int(i8*, i8*, i64)\n"
+            << "declare void @luz_dict_set_float(i8*, i8*, double)\n"
+            << "declare void @luz_dict_set_bool(i8*, i8*, i1)\n"
+            << "declare void @luz_dict_set_str(i8*, i8*, i8*)\n"
+            << "declare i64  @luz_dict_get_int(i8*, i8*)\n"
+            << "declare double @luz_dict_get_float(i8*, i8*)\n"
+            << "declare i1   @luz_dict_get_bool(i8*, i8*)\n"
+            << "declare i8*  @luz_dict_get_str(i8*, i8*)\n"
+            << "declare i64  @luz_dict_len(i8*)\n"
+            << "declare i1   @luz_dict_contains(i8*, i8*)\n"
+            << "declare void @luz_dict_remove(i8*, i8*)\n\n";
     }
 
     // Emit a GEP to get an i8* into a global string constant.
@@ -312,6 +328,8 @@ private:
         case HirKind::UnaryOp:  return emit_unary(static_cast<HirUnaryOp*>(n));
         case HirKind::Call:     return emit_call(static_cast<HirCall*>(n));
         case HirKind::ExprCall: return emit_exprcall(static_cast<HirExprCall*>(n));
+        case HirKind::Dict:     return emit_dict(static_cast<HirDict*>(n));
+        case HirKind::Index:    return emit_index_expr(static_cast<HirIndex*>(n));
         case HirKind::If:
             // If used as expression (e.g. match desugaring) — emit as stmt, return undef
             emit_if_stmt(static_cast<HirIf*>(n));
@@ -491,6 +509,81 @@ private:
         return { coerce_to_str(v), "i8*" };
     }
 
+    // ── Dict helpers ──────────────────────────────────────────────────────────
+
+    static std::string dict_setter(const std::string& llvm_t) {
+        if (llvm_t == "i64"   ) return "luz_dict_set_int";
+        if (llvm_t == "double") return "luz_dict_set_float";
+        if (llvm_t == "i1"    ) return "luz_dict_set_bool";
+        return "luz_dict_set_str";
+    }
+
+    static std::string dict_getter(const std::string& llvm_t) {
+        if (llvm_t == "i64"   ) return "luz_dict_get_int";
+        if (llvm_t == "double") return "luz_dict_get_float";
+        if (llvm_t == "i1"    ) return "luz_dict_get_bool";
+        return "luz_dict_get_str";
+    }
+
+    Val emit_dict(HirDict* n) {
+        std::string t = tmp();
+        emit_line(t + " = call i8* @luz_dict_new()");
+        for (auto& p : n->pairs) {
+            Val kv = emit_expr(p.key.get());
+            Val vv = emit_expr(p.value.get());
+            emit_line("call void @" + dict_setter(vv.type)
+                      + "(i8* " + t + ", i8* " + kv.name
+                      + ", " + vv.type + " " + vv.name + ")");
+        }
+        return { t, "i8*" };
+    }
+
+    Val emit_index_expr(HirIndex* n) {
+        Val coll = emit_expr(n->collection.get());
+        Val idx  = emit_expr(n->index.get());
+        std::string result_t = llvm_type(n->type);
+        if (result_t == "void") result_t = "i8*";
+        std::string t = tmp();
+        // string key → dict access; int key → list access (todo)
+        if (idx.type == "i8*") {
+            emit_line(t + " = call " + result_t + " @" + dict_getter(result_t)
+                      + "(i8* " + coll.name + ", i8* " + idx.name + ")");
+        } else {
+            // list index — placeholder until lists are implemented
+            emit_line(t + " = add i64 0, 0");
+        }
+        return { t, result_t };
+    }
+
+    void emit_index_store(HirIndexStore* n) {
+        Val coll = emit_expr(n->collection.get());
+        Val idx  = emit_expr(n->index.get());
+        Val val  = emit_expr(n->value.get());
+        if (idx.type == "i8*") {
+            emit_line("call void @" + dict_setter(val.type)
+                      + "(i8* " + coll.name + ", i8* " + idx.name
+                      + ", " + val.type + " " + val.name + ")");
+        }
+        // list index store — todo
+    }
+
+    // Return the Luz source type of a HIR node (for dispatch decisions)
+    std::string hir_type_of(HirNode* n) {
+        if (n->kind == HirKind::Load) {
+            auto* l = static_cast<HirLoad*>(n);
+            if (!l->type.empty() && l->type != "unknown") return l->type;
+            auto it = locals_.find(l->name);
+            if (it != locals_.end()) return it->second.hir_type;
+        }
+        if (n->kind == HirKind::Dict)   return "dict";
+        if (n->kind == HirKind::List)   return "list";
+        if (n->kind == HirKind::Literal) {
+            auto* lit = static_cast<HirLiteral*>(n);
+            if (lit->vk == HirLiteral::ValKind::String) return "string";
+        }
+        return "";
+    }
+
     // ── write() / print() builtin ─────────────────────────────────────────────
 
     void emit_write(const std::vector<HirNodePtr>& args) {
@@ -537,17 +630,31 @@ private:
             return coerce_to_str_val(v);
         }
         if (n->func == "len" && !n->args.empty()) {
+            bool is_dict = hir_type_of(n->args[0].get()) == "dict";
             Val v = emit_expr(n->args[0].get());
             std::string t = tmp();
-            emit_line(t + " = call i64 @luz_str_len(i8* " + v.name + ")");
+            if (is_dict)
+                emit_line(t + " = call i64 @luz_dict_len(i8* " + v.name + ")");
+            else
+                emit_line(t + " = call i64 @luz_str_len(i8* " + v.name + ")");
             return { t, "i64" };
         }
         if (n->func == "contains" && n->args.size() >= 2) {
+            bool is_dict = hir_type_of(n->args[0].get()) == "dict";
             Val obj    = emit_expr(n->args[0].get());
             Val needle = emit_expr(n->args[1].get());
             std::string t = tmp();
-            emit_line(t + " = call i1 @luz_str_contains(i8* " + obj.name + ", i8* " + needle.name + ")");
+            if (is_dict)
+                emit_line(t + " = call i1 @luz_dict_contains(i8* " + obj.name + ", i8* " + needle.name + ")");
+            else
+                emit_line(t + " = call i1 @luz_str_contains(i8* " + obj.name + ", i8* " + needle.name + ")");
             return { t, "i1" };
+        }
+        if (n->func == "remove" && n->args.size() >= 2) {
+            Val obj = emit_expr(n->args[0].get());
+            Val key = emit_expr(n->args[1].get());
+            emit_line("call void @luz_dict_remove(i8* " + obj.name + ", i8* " + key.name + ")");
+            return { "", "void" };
         }
         if (n->func == "exit") {
             Val code = n->args.empty() ? Val{"0","i64"} : emit_expr(n->args[0].get());
@@ -604,6 +711,7 @@ private:
         case HirKind::ClassDef:      /* classes not supported    */                   break;
         case HirKind::StructDef:     /* structs not supported    */                   break;
         case HirKind::Import:        /* imports not supported    */                   break;
+        case HirKind::IndexStore:    emit_index_store(static_cast<HirIndexStore*>(n)); break;
         case HirKind::Pass:          break;
         default:
             emit_expr(n);  // expression statement
@@ -623,7 +731,7 @@ private:
         std::string ptr = "%" + n->name + ".addr";
         emit_line(ptr + " = alloca " + lt);
         emit_line("store " + lt + " " + sv + ", " + lt + "* " + ptr);
-        locals_[n->name] = { ptr, lt };
+        locals_[n->name] = { ptr, lt, n->type };
     }
 
     void emit_assign(HirAssign* n) {
@@ -634,7 +742,8 @@ private:
             std::string lt = (v.type == "void" || v.type.empty()) ? "i64" : v.type;
             std::string ptr = "%" + n->name + ".addr";
             emit_line(ptr + " = alloca " + lt);
-            locals_[n->name] = { ptr, lt };
+            std::string ht = hir_type_of(n->value.get());
+            locals_[n->name] = { ptr, lt, ht };
             it = locals_.find(n->name);
         }
         std::string sv = v.type != it->second.type ? coerce(v, it->second.type) : v.name;
