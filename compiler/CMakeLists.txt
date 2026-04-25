@@ -27,6 +27,10 @@ add_library(luz_c_lexer STATIC
 )
 target_include_directories(luz_c_lexer PUBLIC ${LUZ_C_LEXER_DIR})
 
+add_library(luz_rt STATIC
+    runtime/luz_rt.c
+)
+
 add_executable(luzc
     src/main.cpp
     src/lexer.cpp
@@ -42,7 +46,7 @@ target_include_directories(luzc PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-target_link_libraries(luzc PRIVATE luz_c_lexer)
+target_link_libraries(luzc PRIVATE luz_c_lexer luz_rt)
 
 enable_testing()
 # Tests will be wired up once a first module lands (see tests/CMakeLists.txt).

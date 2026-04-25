@@ -237,6 +237,15 @@ private:
                " c\"true\\0A\\00\", align 1\n"
             << "@.fmt.false = private unnamed_addr constant [7 x i8]"
                " c\"false\\0A\\00\", align 1\n\n";
+        
+        final_out_
+            << "declare i8*  @luz_str_concat(i8*, i8*)\n"
+            << "declare i8*  @luz_to_str_int(i64)\n"
+            << "declare i8*  @luz_to_str_float(double)\n"
+            << "declare i8*  @luz_to_str_bool(i1)\n"
+            << "declare i64  @luz_str_len(i8*)\n"
+            << "declare i1   @luz_str_eq(i8*, i8*)\n"
+            << "declare i1   @luz_str_contains(i8*, i8*)\n\n";
     }
 
     // Emit a GEP to get an i8* into a global string constant.
@@ -353,6 +362,25 @@ private:
 
         bool is_float = (lv.type == "double" || rv.type == "double");
 
+        if (n->op == "+" && (lv.type == "i8*" || rv.type == "i8*")) {
+            std::string la = lv.type != "i8*" ? coerce_to_str(lv) : lv.name;
+            std::string ra = rv.type != "i8*" ? coerce_to_str(rv) : rv.name;
+            emit_line(t + " = call i8* @luz_str_concat(i8* " + la + ", i8* " + ra + ")");
+            return { t, "i8*" };
+        }
+
+        // String equality / inequality
+        if ((n->op == "==" || n->op == "!=") &&
+            (lv.type == "i8*" || rv.type == "i8*")) {
+            emit_line(t + " = call i1 @luz_str_eq(i8* " + lv.name + ", i8* " + rv.name + ")");
+            if (n->op == "!=") {
+                std::string t2 = tmp();
+                emit_line(t2 + " = xor i1 " + t + ", 1");
+                return { t2, "i1" };
+            }
+            return { t, "i1" };
+        }
+
         // Logical
         if (n->op == "and") {
             emit_line(t + " = and i1 " + lv.name + ", " + rv.name);
@@ -444,6 +472,25 @@ private:
         return t;
     }
 
+    std::string coerce_to_str(const Val& v) {
+        if (v.type == "i8*") return v.name;
+        std::string t = tmp();
+        if (v.type == "i64")
+            emit_line(t + " = call i8* @luz_to_str_int(i64 " + v.name + ")");
+        else if (v.type == "double")
+            emit_line(t + " = call i8* @luz_to_str_float(double " + v.name + ")");
+        else if (v.type == "i1")
+            emit_line(t + " = call i8* @luz_to_str_bool(i1 " + v.name + ")");
+        else
+            return v.name;
+        return t;
+    }
+
+    Val coerce_to_str_val(const Val& v) {
+        if (v.type == "i8*") return v;
+        return { coerce_to_str(v), "i8*" };
+    }
+
     // ── write() / print() builtin ─────────────────────────────────────────────
 
     void emit_write(const std::vector<HirNodePtr>& args) {
@@ -484,6 +531,23 @@ private:
         if (n->func == "write" || n->func == "print") {
             emit_write(n->args);
             return { "", "void" };
+        }
+        if (n->func == "to_str") {
+            Val v = emit_expr(n->args[0].get());
+            return coerce_to_str_val(v);
+        }
+        if (n->func == "len" && !n->args.empty()) {
+            Val v = emit_expr(n->args[0].get());
+            std::string t = tmp();
+            emit_line(t + " = call i64 @luz_str_len(i8* " + v.name + ")");
+            return { t, "i64" };
+        }
+        if (n->func == "contains" && n->args.size() >= 2) {
+            Val obj    = emit_expr(n->args[0].get());
+            Val needle = emit_expr(n->args[1].get());
+            std::string t = tmp();
+            emit_line(t + " = call i1 @luz_str_contains(i8* " + obj.name + ", i8* " + needle.name + ")");
+            return { t, "i1" };
         }
         if (n->func == "exit") {
             Val code = n->args.empty() ? Val{"0","i64"} : emit_expr(n->args[0].get());
