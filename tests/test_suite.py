@@ -29,19 +29,31 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _find_luzc() -> str:
     """Locate the native luzc binary."""
+    # Env var override (useful in CI)
+    env = os.environ.get("LUZC")
+    if env:
+        return env
+
     candidates = [
-        os.path.join(ROOT, "compiler", "build", "luzc.exe"),
         os.path.join(ROOT, "compiler", "build", "luzc"),
+        os.path.join(ROOT, "compiler", "build", "luzc.exe"),
         os.path.join(ROOT, "compiler", "build", "Release", "luzc.exe"),
         os.path.join(ROOT, "compiler", "build", "Debug",   "luzc.exe"),
     ]
     for c in candidates:
         if os.path.isfile(c):
             return c
-    return "luzc"  # PATH fallback
+
+    import shutil
+    found = shutil.which("luzc")
+    return found or "luzc"
 
 
 LUZC = _find_luzc()
+
+
+def _luzc_available() -> bool:
+    return os.path.isfile(LUZC) or bool(os.path.dirname(LUZC) == "" and __import__("shutil").which(LUZC))
 
 
 # ── Runtime helpers ───────────────────────────────────────────────────────────
@@ -159,6 +171,9 @@ class TypeCheckError:
 
 def typecheck(code: str) -> List[TypeCheckError]:
     """Run the full typechecker via luzc --check-json and return errors."""
+    if not _luzc_available():
+        pytest.skip(f"luzc binary not found at {LUZC!r}")
+
     src = _write_tmp(code)
     try:
         proc = subprocess.run(
