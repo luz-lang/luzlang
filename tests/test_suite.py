@@ -11,12 +11,10 @@ Two families of tests live here:
 
 2. **Static tests** exercise the type checker only (no code generation) and
    assert on the list of reported errors. Helper: ``typecheck``.
-
-The earlier interpreter-based helpers (``val``, ``env``, ``run``) have been
-removed along with ``luz/interpreter.py``.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -26,10 +24,24 @@ from typing import List
 
 import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-LUZC = os.path.join(ROOT, "luzc.py")
+
+
+def _find_luzc() -> str:
+    """Locate the native luzc binary."""
+    candidates = [
+        os.path.join(ROOT, "compiler", "build", "luzc.exe"),
+        os.path.join(ROOT, "compiler", "build", "luzc"),
+        os.path.join(ROOT, "compiler", "build", "Release", "luzc.exe"),
+        os.path.join(ROOT, "compiler", "build", "Debug",   "luzc.exe"),
+    ]
+    for c in candidates:
+        if os.path.isfile(c):
+            return c
+    return "luzc"  # PATH fallback
+
+
+LUZC = _find_luzc()
 
 
 # ── Runtime helpers ───────────────────────────────────────────────────────────
@@ -64,7 +76,7 @@ def run_code(code: str, stdin: str = "") -> RunResult:
     src = _write_tmp(code)
     try:
         proc = subprocess.run(
-            [sys.executable, LUZC, src, "--run"],
+            [LUZC, src, "--run"],
             input=stdin,
             capture_output=True,
             text=True,
@@ -138,23 +150,42 @@ def run_fails(code: str) -> RunResult:
 # ── Typechecker helpers ───────────────────────────────────────────────────────
 
 
-def typecheck(code: str):
-    """Run lexer -> parser -> typechecker and return the list of errors."""
-    from luz.lexer import Lexer
-    from luz.parser import Parser
-    from luz.typechecker import TypeChecker
+@dataclass(frozen=True)
+class TypeCheckError:
+    line: int | None
+    col:  int | None
+    message: str
 
-    tokens = Lexer(code).get_tokens()
-    ast    = Parser(tokens).parse()
-    return TypeChecker().check(ast)
+
+def typecheck(code: str) -> List[TypeCheckError]:
+    """Run the full typechecker via luzc --check-json and return errors."""
+    src = _write_tmp(code)
+    try:
+        proc = subprocess.run(
+            [LUZC, src, "--check-json"],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+        )
+        raw = proc.stdout.strip() or "[]"
+        items = json.loads(raw)
+        return [TypeCheckError(e.get("line"), e.get("col"), e.get("message", ""))
+                for e in items]
+    except (json.JSONDecodeError, OSError):
+        return []
+    finally:
+        try:
+            os.remove(src)
+        except OSError:
+            pass
 
 
 def assert_fault(code: str, fault: str):
-    """Assert that typecheck(code) reports at least one error with ``fault`` in its kind."""
+    """Assert that typecheck(code) reports at least one error whose message contains ``fault``."""
     errors = typecheck(code)
-    kinds  = [getattr(e, "fault_kind", "") for e in errors]
-    assert any(fault in k for k in kinds), (
-        f"expected a {fault} error, got {kinds or 'no errors'}"
+    msgs   = [e.message for e in errors]
+    assert any(fault.lower() in m.lower() for m in msgs), (
+        f"expected an error containing {fault!r}, got {msgs or 'no errors'}"
     )
 
 

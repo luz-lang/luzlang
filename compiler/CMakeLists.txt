@@ -20,7 +20,7 @@ endif()
 
 # Reuse the existing C lexer from luz/c_lexer/ instead of porting it.
 # It already produces the same token stream the Python pipeline consumes.
-set(LUZ_C_LEXER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../luz/c_lexer)
+set(LUZ_C_LEXER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/c_lexer)
 
 add_library(luz_c_lexer STATIC
     ${LUZ_C_LEXER_DIR}/luz_lexer.c
