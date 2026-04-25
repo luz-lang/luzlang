@@ -25,7 +25,7 @@ jobs:
         run: cmake --build compiler/build --parallel
 
       - name: Run C++ test suite
-        run: compiler/build/luz_tests
+        run: ctest --test-dir compiler/build --output-on-failure
 
       - name: Set up Python
         uses: actions/setup-python@v5
