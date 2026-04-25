@@ -8,40 +8,41 @@ on:
 jobs:
   build-linux:
     runs-on: ubuntu-22.04
-    container: python:3.11-slim-bullseye
     permissions:
       contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Install dependencies
+      - name: Install build tools
         run: |
-          apt-get update
-          apt-get install -y binutils
+          sudo apt-get update
+          sudo apt-get install -y cmake g++
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Build luzc
+        run: |
+          cmake -B compiler/build -S compiler -DCMAKE_BUILD_TYPE=Release
+          cmake --build compiler/build --parallel
 
-      - name: Build luz
-        run: pyinstaller --onefile --clean --strip --name luz main.py
+      - name: Build ray (package manager — still Python)
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --clean --strip --name ray ray.py
 
-      - name: Build ray
-        run: pyinstaller --onefile --clean --strip --name ray ray.py
-
-      - name: Package binaries
+      - name: Package release
         run: |
           mkdir -p luz-linux/lib
-          cp dist/luz dist/ray luz-linux/
-          cp -r libs/luz-math luz-linux/lib/
-          cp -r libs/luz-random luz-linux/lib/
-          cp -r libs/luz-system luz-linux/lib/
-          cp -r libs/luz-io luz-linux/lib/
-          cp -r libs/luz-clock luz-linux/lib/
+          cp compiler/build/luzc          luz-linux/
+          cp compiler/runtime/luz_rt.c    luz-linux/
+          cp dist/ray                     luz-linux/
+          cp -r libs/luz-math             luz-linux/lib/
+          cp -r libs/luz-random           luz-linux/lib/
+          cp -r libs/luz-system           luz-linux/lib/
+          cp -r libs/luz-io               luz-linux/lib/
+          cp -r libs/luz-clock            luz-linux/lib/
           tar -czf "luz-${GITHUB_REF_NAME}-linux.tar.gz" -C luz-linux .
 
-      - name: Upload Linux binaries to release
+      - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: luz-${{ github.ref_name }}-linux.tar.gz

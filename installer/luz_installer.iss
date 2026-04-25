@@ -8,7 +8,7 @@
 #endif
 
 #define AppName        "Luz"
-#define AppExeName     "luz.exe"
+#define AppExeName     "luzc.exe"
 #define AppPublisher   "Elabsurdo984"
 #define AppURL         "https://elabsurdo984.github.io/luzlang/"
 #define AppSupportURL  "https://github.com/Elabsurdo984/luzlang/issues"
@@ -97,7 +97,7 @@ Name: "addtopath";        Description: "Add Luz to the system &PATH (recommended
 ; .luz file association
 Name: "fileassoc";        Description: "Associate .&luz files with the Luz interpreter"; GroupDescription: "File associations:"; Flags: checkedonce
 ; Desktop / Start Menu shortcuts
-Name: "desktopicon";      Description: "Create a &desktop shortcut for the Luz REPL"; GroupDescription: "Shortcuts:"; Flags: unchecked
+Name: "desktopicon";      Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 Name: "startmenuicon";    Description: "Create &Start Menu shortcuts"; GroupDescription: "Shortcuts:"; Flags: checkedonce
 ; Examples
 Name: "installexamples";  Description: "Install example programs to Documents\Luz Examples"; GroupDescription: "Optional components:"; Flags: checkedonce
@@ -106,8 +106,9 @@ Name: "installexamples";  Description: "Install example programs to Documents\Lu
 
 [Files]
 ; Core executables
-Source: "..\dist\luz.exe";  DestDir: "{app}"; Flags: ignoreversion
-Source: "..\dist\ray.exe";  DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\luzc.exe";   DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\luz_rt.c";   DestDir: "{app}"; Flags: ignoreversion
+Source: "..\dist\ray.exe";    DestDir: "{app}"; Flags: ignoreversion
 
 ; Standard library
 Source: "..\libs\*"; DestDir: "{app}\luz_modules"; Flags: ignoreversion recursesubdirs createallsubdirs
@@ -133,8 +134,8 @@ Name: "{app}\luz_modules"
 
 [Icons]
 ; Start Menu
-Name: "{group}\Luz REPL";              Filename: "{app}\luz.exe"; \
-    IconFilename: "{app}\icon.ico"; Comment: "Launch the Luz interactive REPL"; \
+Name: "{group}\Luz Compiler (luzc)";  Filename: "{app}\luzc.exe"; \
+    IconFilename: "{app}\icon.ico"; Comment: "Luz native compiler"; \
     Tasks: startmenuicon
 Name: "{group}\Luz Documentation";    Filename: "{#AppURL}"; \
     Tasks: startmenuicon
@@ -144,8 +145,8 @@ Name: "{group}\Uninstall Luz";        Filename: "{uninstallexe}"; \
     Tasks: startmenuicon
 
 ; Desktop shortcut (optional)
-Name: "{autodesktop}\Luz REPL";        Filename: "{app}\luz.exe"; \
-    IconFilename: "{app}\icon.ico"; Comment: "Launch the Luz interactive REPL"; \
+Name: "{autodesktop}\Luz Compiler";    Filename: "{app}\luzc.exe"; \
+    IconFilename: "{app}\icon.ico"; Comment: "Luz native compiler"; \
     Tasks: desktopicon
 
 ; ── [Registry] ───────────────────────────────────────────────────────────────
@@ -186,9 +187,9 @@ Root: HKA; Subkey: "Software\Classes\LuzScript"; ValueType: string; ValueName: "
     ValueData: "Luz Script"; Flags: uninsdeletekey; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\LuzScript\DefaultIcon"; ValueType: string; ValueName: ""; \
     ValueData: "{app}\icon.ico,0"; Tasks: fileassoc
-; Open action
+; Open action (compile + run)
 Root: HKA; Subkey: "Software\Classes\LuzScript\shell\open\command"; ValueType: string; ValueName: ""; \
-    ValueData: """{app}\luz.exe"" ""%1"" %*"; Tasks: fileassoc
+    ValueData: """{app}\luzc.exe"" ""%1"" --run"; Tasks: fileassoc
 ; Edit action (opens with notepad as fallback)
 Root: HKA; Subkey: "Software\Classes\LuzScript\shell\edit\command"; ValueType: string; ValueName: ""; \
     ValueData: "notepad.exe ""%1"""; Tasks: fileassoc
@@ -196,13 +197,14 @@ Root: HKA; Subkey: "Software\Classes\LuzScript\shell\edit\command"; ValueType: s
 Root: HKA; Subkey: "Software\Classes\LuzScript\shell\run"; ValueType: string; ValueName: ""; \
     ValueData: "Run with Luz"; Tasks: fileassoc
 Root: HKA; Subkey: "Software\Classes\LuzScript\shell\run\command"; ValueType: string; ValueName: ""; \
-    ValueData: """{app}\luz.exe"" ""%1"" %*"; Tasks: fileassoc
+    ValueData: """{app}\luzc.exe"" ""%1"" --run"; Tasks: fileassoc
 
 ; ── [Run] ────────────────────────────────────────────────────────────────────
 
 [Run]
-; Show a "Launch REPL" checkbox on the final page
-Filename: "{app}\luz.exe"; Description: "Launch Luz REPL now"; \
+; Open a terminal in the install directory after setup
+Filename: "{cmd}"; Parameters: "/k echo Luz {#AppVersion} installed. Run: luzc ^<file.luz^>"; \
+    Description: "Open a terminal to try luzc"; \
     Flags: nowait postinstall skipifsilent unchecked
 
 ; Open the examples folder if examples were installed
@@ -219,9 +221,8 @@ Filename: "{cmd}"; Parameters: "/c setx LUZ_HOME """""; \
 ; ── [UninstallDelete] ────────────────────────────────────────────────────────
 
 [UninstallDelete]
-; Remove the modules directory and any .pyc caches generated at runtime
+; Remove the modules directory
 Type: filesandordirs; Name: "{app}\luz_modules"
-Type: filesandordirs; Name: "{app}\__pycache__"
 
 ; ── [Code] ───────────────────────────────────────────────────────────────────
 

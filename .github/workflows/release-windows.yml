@@ -12,22 +12,28 @@ jobs:
       contents: write
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Build luzc.exe
+        run: |
+          cmake -B compiler/build -S compiler
+          cmake --build compiler/build --config Release
+
+      - name: Set up Python (for ray.exe)
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Install PyInstaller
-        run: pip install pyinstaller
+      - name: Build ray.exe (package manager — still Python)
+        run: |
+          pip install pyinstaller
+          pyinstaller --onefile --name ray ray.py
 
-      - name: Build luz.exe
-        run: pyinstaller --onefile --name luz main.py
-
-      - name: Build ray.exe
-        run: pyinstaller --onefile --name ray ray.py
+      - name: Copy luzc.exe to dist/
+        run: |
+          New-Item -ItemType Directory -Force -Path dist
+          Copy-Item compiler\build\Release\luzc.exe dist\luzc.exe
+          Copy-Item compiler\runtime\luz_rt.c dist\luz_rt.c
 
       - name: Install Inno Setup
         run: choco install innosetup --yes

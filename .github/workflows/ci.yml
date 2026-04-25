@@ -7,33 +7,35 @@ on:
     branches: ["master"]
 
 jobs:
-  test:
+  build-and-test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ clang
+
+      - name: Configure
+        run: cmake -B compiler/build -S compiler -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build luzc
+        run: cmake --build compiler/build --parallel
+
+      - name: Run C++ test suite
+        run: compiler/build/luz_tests
+
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
 
-      - name: Install dependencies
-        run: pip install pytest pylint llvmlite
+      - name: Install pytest
+        run: pip install pytest
 
-      - name: Build Luz C runtime
-        run: make -C luz/runtime
-
-      - name: Run test suite
+      - name: Run Python test suite
         run: pytest tests/test_suite.py -v
-
-      - name: Lint
-        run: pylint luz/ --fail-under=9.0
-
-      # Examples execution is covered by tests/test_suite.py, which already
-      # compiles + runs programs through luzc and skips gracefully when the
-      # LLVM backend is broken on the host (see the smoke-test in test_suite.py).
-      # Running them again here would double-fail on any backend issue.
+        # typecheck tests use luzc --check-json (no clang needed)
+        # runtime tests use luzc --run (needs clang, installed above)
