@@ -67,6 +67,7 @@ public:
 
     void emit_module(const HirBlock& program, const std::string& filename) {
         collect_strings(program);
+        collect_classes(program);
 
         // Preamble → final output
         final_out_ << "; ModuleID = 'luz'\n"
@@ -78,14 +79,19 @@ public:
         emit_string_pool();
         emit_format_strings();
 
-        // Separate top-level funcs from top-level stmts
-        std::vector<HirNode*> funcs, stmts;
+        // Separate top-level nodes by kind
+        std::vector<HirNode*> classes, funcs, stmts;
         for (auto& n : program) {
-            if (n->kind == HirKind::FuncDef) funcs.push_back(n.get());
-            else                              stmts.push_back(n.get());
+            if      (n->kind == HirKind::ClassDef) classes.push_back(n.get());
+            else if (n->kind == HirKind::FuncDef)  funcs.push_back(n.get());
+            else                                   stmts.push_back(n.get());
         }
 
-        // Emit user-defined functions
+        // Emit class methods before free functions
+        for (auto* c : classes)
+            emit_class(static_cast<HirClassDef*>(c));
+
+        // Emit free functions
         for (auto* f : funcs)
             emit_func(static_cast<HirFuncDef*>(f));
 
@@ -116,6 +122,15 @@ private:
     // String literal pool (index → raw content)
     std::vector<std::string>         str_pool_;
     std::unordered_map<std::string, int> str_dedup_;
+
+    // Class registry for method dispatch
+    struct ClassInfo {
+        std::string parent;
+        std::vector<std::string> methods;
+        std::unordered_map<std::string, std::string> field_types;        // field  → llvm type
+        std::unordered_map<std::string, std::string> method_ret_types;   // method → llvm type
+    };
+    std::unordered_map<std::string, ClassInfo> classes_;
 
     // Per-function state (reset on each function)
     int tmp_id_   = 0;
@@ -154,6 +169,71 @@ private:
 
     void collect_strings(const HirBlock& blk) {
         for (auto& n : blk) collect_node(n.get());
+    }
+
+    // Scan init body for self.field = param patterns to record field types.
+    void scan_init_fields(const HirBlock& body,
+                          const std::unordered_map<std::string, std::string>& param_t,
+                          std::unordered_map<std::string, std::string>& field_types) {
+        for (auto& node : body) {
+            if (node->kind != HirKind::FieldStore) continue;
+            auto* fs = static_cast<HirFieldStore*>(node.get());
+            if (field_types.count(fs->field)) continue; // already known
+            std::string vt;
+            if (fs->value->kind == HirKind::Load) {
+                auto it = param_t.find(static_cast<HirLoad*>(fs->value.get())->name);
+                if (it != param_t.end()) vt = it->second;
+            } else if (fs->value->kind == HirKind::Literal) {
+                auto* lit = static_cast<HirLiteral*>(fs->value.get());
+                switch (lit->vk) {
+                case HirLiteral::ValKind::Int:    vt = "i64";    break;
+                case HirLiteral::ValKind::Float:  vt = "double"; break;
+                case HirLiteral::ValKind::Bool:   vt = "i1";     break;
+                case HirLiteral::ValKind::String: vt = "i8*";    break;
+                default:                          vt = "i8*";    break;
+                }
+            }
+            if (!vt.empty()) field_types[fs->field] = vt;
+        }
+    }
+
+    void collect_classes(const HirBlock& program) {
+        for (auto& n : program) {
+            if (n->kind != HirKind::ClassDef) continue;
+            auto* cls = static_cast<HirClassDef*>(n.get());
+            ClassInfo info;
+            info.parent = cls->parent;
+            for (auto& m : cls->methods) {
+                if (m->kind != HirKind::FuncDef) continue;
+                auto* fn = static_cast<HirFuncDef*>(m.get());
+                info.methods.push_back(fn->name);
+                // Record return type (unknown → void for methods)
+                std::string ret = llvm_type(fn->return_type);
+                if (fn->return_type.empty() || fn->return_type == "unknown") ret = "void";
+                info.method_ret_types[fn->name] = ret;
+                if (fn->name == "init") {
+                    std::unordered_map<std::string, std::string> param_t;
+                    for (auto& p : fn->params)
+                        param_t[p.name] = llvm_type(p.type);
+                    scan_init_fields(fn->body, param_t, info.field_types);
+                }
+            }
+            classes_[cls->name] = std::move(info);
+        }
+    }
+
+    // Resolve field type: check class hierarchy field_types maps.
+    std::string resolve_field_type(const std::string& class_name,
+                                   const std::string& field) {
+        std::string cur = class_name;
+        while (!cur.empty()) {
+            auto cit = classes_.find(cur);
+            if (cit == classes_.end()) break;
+            auto fit = cit->second.field_types.find(field);
+            if (fit != cit->second.field_types.end()) return fit->second;
+            cur = cit->second.parent;
+        }
+        return "i8*"; // default: treat as string/pointer
     }
 
     void collect_node(HirNode* n) {
@@ -201,6 +281,30 @@ private:
         case HirKind::FuncDef:
             collect_strings(static_cast<HirFuncDef*>(n)->body);
             break;
+        case HirKind::ClassDef: {
+            auto* cls = static_cast<HirClassDef*>(n);
+            for (auto& m : cls->methods) collect_node(m.get());
+            break;
+        }
+        case HirKind::FieldLoad: {
+            auto* f = static_cast<HirFieldLoad*>(n);
+            intern(f->field);
+            collect_node(f->obj.get());
+            break;
+        }
+        case HirKind::FieldStore: {
+            auto* f = static_cast<HirFieldStore*>(n);
+            intern(f->field);
+            collect_node(f->obj.get());
+            collect_node(f->value.get());
+            break;
+        }
+        case HirKind::ObjectCall: {
+            auto* o = static_cast<HirObjectCall*>(n);
+            collect_node(o->obj.get());
+            for (auto& a : o->args) collect_node(a.get());
+            break;
+        }
         case HirKind::Alert:
             collect_node(static_cast<HirAlert*>(n)->value.get());
             break;
@@ -328,8 +432,10 @@ private:
         case HirKind::UnaryOp:  return emit_unary(static_cast<HirUnaryOp*>(n));
         case HirKind::Call:     return emit_call(static_cast<HirCall*>(n));
         case HirKind::ExprCall: return emit_exprcall(static_cast<HirExprCall*>(n));
-        case HirKind::Dict:     return emit_dict(static_cast<HirDict*>(n));
-        case HirKind::Index:    return emit_index_expr(static_cast<HirIndex*>(n));
+        case HirKind::Dict:       return emit_dict(static_cast<HirDict*>(n));
+        case HirKind::Index:      return emit_index_expr(static_cast<HirIndex*>(n));
+        case HirKind::FieldLoad:  return emit_field_load(static_cast<HirFieldLoad*>(n));
+        case HirKind::ObjectCall: return emit_objectcall(static_cast<HirObjectCall*>(n));
         case HirKind::If:
             // If used as expression (e.g. match desugaring) — emit as stmt, return undef
             emit_if_stmt(static_cast<HirIf*>(n));
@@ -625,6 +731,29 @@ private:
             emit_write(n->args);
             return { "", "void" };
         }
+        // Constructor call: ClassName(args...) → new dict + __init
+        if (classes_.count(n->func)) {
+            std::string obj = tmp();
+            emit_line(obj + " = call i8* @luz_dict_new()");
+            // Check if this class (or any parent) defines init
+            std::string init_owner = resolve_method_class(n->func, "init");
+            bool has_init = !init_owner.empty() && init_owner != n->func
+                            ? true
+                            : classes_.count(n->func) &&
+                              [&]{ for(auto& m: classes_[n->func].methods) if(m=="init") return true; return false; }();
+            // Simpler: just try to find init in hierarchy
+            std::string owner_init = resolve_method_class(n->func, "init");
+            if (classes_.count(owner_init) &&
+                [&]{ for(auto& m: classes_[owner_init].methods) if(m=="init") return true; return false; }()) {
+                std::string args_str = "i8* " + obj;
+                for (auto& a : n->args) {
+                    Val av = emit_expr(a.get());
+                    args_str += ", " + av.type + " " + av.name;
+                }
+                emit_line("call void @" + owner_init + "__init(" + args_str + ")");
+            }
+            return { obj, "i8*" };
+        }
         if (n->func == "to_str") {
             Val v = emit_expr(n->args[0].get());
             return coerce_to_str_val(v);
@@ -708,10 +837,12 @@ private:
         case HirKind::Alert:         emit_alert(static_cast<HirAlert*>(n));           break;
         case HirKind::AttemptRescue: emit_attempt(static_cast<HirAttemptRescue*>(n));break;
         case HirKind::FuncDef:       /* nested defs not supported */                  break;
-        case HirKind::ClassDef:      /* classes not supported    */                   break;
+        case HirKind::ClassDef:      /* emitted in emit_module, skip here */          break;
         case HirKind::StructDef:     /* structs not supported    */                   break;
         case HirKind::Import:        /* imports not supported    */                   break;
-        case HirKind::IndexStore:    emit_index_store(static_cast<HirIndexStore*>(n)); break;
+        case HirKind::IndexStore:    emit_index_store(static_cast<HirIndexStore*>(n));          break;
+        case HirKind::FieldStore:    emit_field_store(static_cast<HirFieldStore*>(n));          break;
+        case HirKind::ObjectCall:    emit_objectcall(static_cast<HirObjectCall*>(n));           break;
         case HirKind::Pass:          break;
         default:
             emit_expr(n);  // expression statement
@@ -726,6 +857,8 @@ private:
     void emit_let(HirLet* n) {
         std::string lt = llvm_type(n->type);
         if (lt == "void") lt = "i64";
+        // User-defined class types are object pointers (i8*)
+        if (lt == "i64" && classes_.count(n->type)) lt = "i8*";
         Val v = emit_expr(n->value.get());
         std::string sv = v.type != lt ? coerce(v, lt) : v.name;
         std::string ptr = "%" + n->name + ".addr";
@@ -906,6 +1039,152 @@ private:
         // Re-seek to end
         body_buf_.seekp(0, std::ios_base::end);
         out_ = &body_buf_;
+    }
+
+    // ── Class support ─────────────────────────────────────────────────────────
+
+    // Walk up the inheritance chain to find which class defines a method.
+    std::string resolve_method_class(const std::string& class_name,
+                                     const std::string& method) {
+        std::string cur = class_name;
+        while (!cur.empty()) {
+            auto it = classes_.find(cur);
+            if (it == classes_.end()) break;
+            for (auto& m : it->second.methods)
+                if (m == method) return cur;
+            cur = it->second.parent;
+        }
+        return class_name;
+    }
+
+    void emit_class(HirClassDef* cls) {
+        for (auto& m : cls->methods) {
+            if (m->kind == HirKind::FuncDef)
+                emit_class_method(cls->name, static_cast<HirFuncDef*>(m.get()));
+        }
+    }
+
+    void emit_class_method(const std::string& class_name, HirFuncDef* n) {
+        // Save outer state
+        auto saved_locals = locals_;
+        auto saved_ret    = current_ret_type_;
+        auto saved_loops  = loop_stack_;
+        int  saved_tmp    = tmp_id_;
+        int  saved_lbl    = label_id_;
+        std::ostringstream saved_body;
+        saved_body << body_buf_.str();
+
+        reset_counters();
+
+        std::string ret_t = llvm_type(n->return_type);
+        // Methods with no explicit return type are void
+        if (n->return_type.empty() || n->return_type == "unknown") ret_t = "void";
+        current_ret_type_ = ret_t;
+
+        // self + explicit params
+        std::string params = "i8* %self.in";
+        for (auto& p : n->params)
+            params += ", " + llvm_type(p.type) + " %" + p.name + ".in";
+
+        final_out_ << "\ndefine " << ret_t << " @"
+                   << class_name << "__" << n->name
+                   << "(" << params << ") {\n"
+                   << "entry:\n";
+
+        // Spill self — hir_type = class name so field lookups work
+        emit_line("%self.addr = alloca i8*");
+        emit_line("store i8* %self.in, i8** %self.addr");
+        locals_["self"] = { "%self.addr", "i8*", class_name };
+
+        // Spill explicit params
+        for (auto& p : n->params) {
+            std::string pt  = llvm_type(p.type);
+            std::string ptr = "%" + p.name + ".addr";
+            emit_line(ptr + " = alloca " + pt);
+            emit_line("store " + pt + " %" + p.name + ".in, " + pt + "* " + ptr);
+            locals_[p.name] = { ptr, pt, p.type };
+        }
+
+        emit_block(n->body);
+
+        // Trailing terminator (dead code guard)
+        if      (ret_t == "void"  ) emit_line("ret void");
+        else if (ret_t == "i64"   ) emit_line("ret i64 0");
+        else if (ret_t == "double") emit_line("ret double 0.0");
+        else if (ret_t == "i1"    ) emit_line("ret i1 0");
+        else                        emit_line("ret i8* null");
+
+        final_out_ << body_buf_.str() << "}\n";
+
+        // Restore outer state
+        locals_           = std::move(saved_locals);
+        current_ret_type_ = saved_ret;
+        loop_stack_       = std::move(saved_loops);
+        tmp_id_           = saved_tmp;
+        label_id_         = saved_lbl;
+        body_buf_.str(saved_body.str());
+        body_buf_.clear();
+        body_buf_.seekp(0, std::ios_base::end);
+        out_ = &body_buf_;
+    }
+
+    Val emit_field_load(HirFieldLoad* n) {
+        Val obj = emit_expr(n->obj.get());
+        std::string result_t = llvm_type(n->type);
+        // "unknown" types: look up from class field registry
+        if (result_t == "i64" && (n->type.empty() || n->type == "unknown")) {
+            std::string class_name = hir_type_of(n->obj.get());
+            result_t = resolve_field_type(class_name, n->field);
+        }
+        if (result_t == "void") result_t = "i8*";
+        int id = intern(n->field);
+        std::string key = gep_pool_str(id);
+        std::string t = tmp();
+        emit_line(t + " = call " + result_t + " @" + dict_getter(result_t)
+                  + "(i8* " + obj.name + ", i8* " + key + ")");
+        return { t, result_t };
+    }
+
+    void emit_field_store(HirFieldStore* n) {
+        Val obj = emit_expr(n->obj.get());
+        Val val = emit_expr(n->value.get());
+        int id  = intern(n->field);
+        std::string key = gep_pool_str(id);
+        emit_line("call void @" + dict_setter(val.type)
+                  + "(i8* " + obj.name + ", i8* " + key
+                  + ", " + val.type + " " + val.name + ")");
+    }
+
+    Val emit_objectcall(HirObjectCall* n) {
+        Val obj = emit_expr(n->obj.get());
+        std::string class_name = hir_type_of(n->obj.get());
+        std::string owner = resolve_method_class(class_name, n->method);
+        std::string ret_t = llvm_type(n->return_type);
+        if (n->return_type.empty() || n->return_type == "unknown") {
+            // Look up actual return type from class registry
+            auto cit = classes_.find(owner);
+            if (cit != classes_.end()) {
+                auto rit = cit->second.method_ret_types.find(n->method);
+                ret_t = (rit != cit->second.method_ret_types.end()) ? rit->second : "void";
+            } else {
+                ret_t = "void";
+            }
+        }
+
+        std::string arg_str = "i8* " + obj.name;
+        for (auto& a : n->args) {
+            Val av = emit_expr(a.get());
+            arg_str += ", " + av.type + " " + av.name;
+        }
+
+        if (ret_t == "void") {
+            emit_line("call void @" + owner + "__" + n->method + "(" + arg_str + ")");
+            return { "", "void" };
+        }
+        std::string t = tmp();
+        emit_line(t + " = call " + ret_t + " @" + owner + "__" + n->method
+                  + "(" + arg_str + ")");
+        return { t, ret_t };
     }
 
     // ── luz_powi helper ───────────────────────────────────────────────────────
