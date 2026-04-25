@@ -46,6 +46,10 @@ target_include_directories(luzc PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+target_compile_definitions(luzc PRIVATE
+    LUZ_RT_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/runtime/luz_rt.c"
+)
+
 target_link_libraries(luzc PRIVATE luz_c_lexer luz_rt)
 
 enable_testing()
