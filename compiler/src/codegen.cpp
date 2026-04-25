@@ -11,12 +11,17 @@
 
 #include <cassert>
 #include <cstdio>
+#include <fstream>
 #include <ostream>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#include "luz/hir.hpp"
+#include "luz/lexer.hpp"
+#include "luz/parser.hpp"
 
 namespace luz {
 namespace {
@@ -66,6 +71,10 @@ public:
     explicit CodeGen(std::ostream& output) : final_out_(output) {}
 
     void emit_module(const HirBlock& program, const std::string& filename) {
+        // Extract directory of source file for import resolution
+        auto slash = filename.find_last_of("/\\");
+        source_dir_ = (slash != std::string::npos) ? filename.substr(0, slash) : ".";
+
         collect_strings(program);
         collect_classes(program);
 
@@ -80,13 +89,18 @@ public:
         emit_format_strings();
 
         // Separate top-level nodes by kind
-        std::vector<HirNode*> classes, funcs, stmts;
+        std::vector<HirNode*> imports, classes, funcs, stmts;
         for (auto& n : program) {
-            if      (n->kind == HirKind::ClassDef)  classes.push_back(n.get());
+            if      (n->kind == HirKind::Import)    imports.push_back(n.get());
+            else if (n->kind == HirKind::ClassDef)  classes.push_back(n.get());
             else if (n->kind == HirKind::FuncDef)   funcs.push_back(n.get());
-            else if (n->kind == HirKind::StructDef) { /* type info only, no IR to emit */ }
+            else if (n->kind == HirKind::StructDef) { /* type info only */ }
             else                                    stmts.push_back(n.get());
         }
+
+        // Emit imports first (inlines definitions from other files)
+        for (auto* i : imports)
+            emit_import(static_cast<HirImport*>(i));
 
         // Emit class methods before free functions
         for (auto* c : classes)
@@ -143,6 +157,12 @@ private:
     std::string current_ret_type_ = "i64";
 
     bool needs_powi_ = false;
+
+    // Lambda variables: varname → LLVM function name (e.g. "add" → "@add")
+    std::unordered_map<std::string, std::string> lambda_vars_;
+
+    // Source file directory for import resolution
+    std::string source_dir_;
 
     // ── Counter helpers ───────────────────────────────────────────────────────
 
@@ -377,6 +397,14 @@ private:
             << "declare i64  @luz_dict_len(i8*)\n"
             << "declare i1   @luz_dict_contains(i8*, i8*)\n"
             << "declare void @luz_dict_remove(i8*, i8*)\n\n";
+
+        // attempt / rescue runtime (setjmp-based)
+        final_out_
+            << "declare i32  @setjmp(i8*)\n"
+            << "declare void @luz_push_rescue_ptr(i8*)\n"
+            << "declare void @luz_pop_rescue()\n"
+            << "declare void @luz_alert_throw(i8*)\n"
+            << "declare i8*  @luz_get_error()\n\n";
     }
 
     // Emit a GEP to get an i8* into a global string constant.
@@ -742,6 +770,24 @@ private:
             emit_write(n->args);
             return { "", "void" };
         }
+        // Lambda call: call stored lambda by its function name directly
+        if (lambda_vars_.count(n->func)) {
+            std::string ret_t = "i64"; // default; improve with type inference later
+            std::string arg_str;
+            for (int i = 0; i < (int)n->args.size(); ++i) {
+                Val av = emit_expr(n->args[i].get());
+                if (i) arg_str += ", ";
+                arg_str += av.type + " " + av.name;
+            }
+            if (ret_t == "void") {
+                emit_line("call void @" + n->func + "(" + arg_str + ")");
+                return { "", "void" };
+            }
+            std::string t = tmp();
+            emit_line(t + " = call " + ret_t + " @" + n->func + "(" + arg_str + ")");
+            return { t, ret_t };
+        }
+
         // Constructor call: ClassName(args...) → new dict + __init
         if (classes_.count(n->func)) {
             std::string obj = tmp();
@@ -850,7 +896,7 @@ private:
         case HirKind::FuncDef:       /* nested defs not supported */                  break;
         case HirKind::ClassDef:      /* emitted in emit_module, skip here */          break;
         case HirKind::StructDef:     /* structs not supported    */                   break;
-        case HirKind::Import:        /* imports not supported    */                   break;
+        case HirKind::Import:        emit_import(static_cast<HirImport*>(n));         break;
         case HirKind::IndexStore:    emit_index_store(static_cast<HirIndexStore*>(n));          break;
         case HirKind::FieldStore:    emit_field_store(static_cast<HirFieldStore*>(n));          break;
         case HirKind::ObjectCall:    emit_objectcall(static_cast<HirObjectCall*>(n));           break;
@@ -866,6 +912,11 @@ private:
     }
 
     void emit_let(HirLet* n) {
+        // Lambda: let f = fn(...) → emit named function, store pointer
+        if (n->value && n->value->kind == HirKind::FuncDef) {
+            emit_lambda_def(n->name, static_cast<HirFuncDef*>(n->value.get()));
+            return;
+        }
         std::string lt = llvm_type(n->type);
         if (lt == "void") lt = "i64";
         // User-defined class types are object pointers (i8*)
@@ -879,6 +930,11 @@ private:
     }
 
     void emit_assign(HirAssign* n) {
+        // Lambda: add = fn(...) → emit named function
+        if (n->value && n->value->kind == HirKind::FuncDef) {
+            emit_lambda_def(n->name, static_cast<HirFuncDef*>(n->value.get()));
+            return;
+        }
         Val v   = emit_expr(n->value.get());
         auto it = locals_.find(n->name);
         if (it == locals_.end()) {
@@ -972,23 +1028,71 @@ private:
 
     void emit_alert(HirAlert* n) {
         Val v = emit_expr(n->value.get());
-        if (v.type == "i8*") {
-            std::string fp = gep_str_const("@.fmt.str", 4);
-            emit_line("call i32 (i8*, ...) @printf(i8* " + fp + ", i8* " + v.name + ")");
-        } else {
-            // Print numeric alert value
-            std::string fp = gep_str_const("@.fmt.int", 6);
-            emit_line("call i32 (i8*, ...) @printf(i8* " + fp + ", i64 " + v.name + ")");
-        }
-        emit_line("call void @exit(i32 1)");
+        std::string msg = v.type == "i8*" ? v.name : coerce_to_str(v);
+        emit_line("call void @luz_alert_throw(i8* " + msg + ")");
         emit_line("unreachable");
         *out_ << lbl("dead") << ":\n";
     }
 
     void emit_attempt(HirAttemptRescue* n) {
-        // No LLVM exceptions — emit try body; rescue is unreachable; finally always runs.
+        // setjmp/longjmp structured error handling.
+        // Layout:
+        //   alloca jmp_buf (512 bytes, safe on all platforms)
+        //   register with runtime
+        //   setjmp → 0 = normal, 1 = exception caught
+        //   br → try_body or rescue_block
+        //   try_body: ... pop rescue ... br finally
+        //   rescue_block: ... pop rescue ... br finally
+        //   finally: ...
+
+        std::string buf_name = tmp();
+        std::string buf_ptr  = tmp();
+        std::string caught   = tmp();
+        std::string is_err   = tmp();
+        std::string try_lbl     = lbl("try_body");
+        std::string rescue_lbl  = lbl("rescue_block");
+        std::string finally_lbl = lbl("try_finally");
+        std::string after_lbl   = lbl("try_after");
+
+        // Allocate jmp_buf
+        emit_line(buf_name + " = alloca [512 x i8], align 16");
+        emit_line(buf_ptr  + " = bitcast [512 x i8]* " + buf_name + " to i8*");
+
+        // Register rescue point
+        emit_line("call void @luz_push_rescue_ptr(i8* " + buf_ptr + ")");
+
+        // setjmp — returns 0 first time, 1 on longjmp
+        emit_line(caught + " = call i32 @setjmp(i8* " + buf_ptr + ")");
+        emit_line(is_err + " = icmp ne i32 " + caught + ", 0");
+        emit_line("br i1 " + is_err + ", label %" + rescue_lbl + ", label %" + try_lbl);
+
+        // Try body
+        *out_ << try_lbl << ":\n";
         emit_block(n->try_block);
+        emit_line("call void @luz_pop_rescue()");
+        emit_line("br label %" + finally_lbl);
+
+        // Rescue block
+        *out_ << rescue_lbl << ":\n";
+        emit_line("call void @luz_pop_rescue()");
+        // Bind error variable if present
+        if (!n->error_var.empty()) {
+            std::string err_ptr = "%" + n->error_var + ".addr";
+            std::string err_val = tmp();
+            emit_line(err_ptr + " = alloca i8*");
+            emit_line(err_val + " = call i8* @luz_get_error()");
+            emit_line("store i8* " + err_val + ", i8** " + err_ptr);
+            locals_[n->error_var] = { err_ptr, "i8*", "string" };
+        }
+        emit_block(n->rescue_block);
+        emit_line("br label %" + finally_lbl);
+
+        // Finally
+        *out_ << finally_lbl << ":\n";
         emit_block(n->finally_block);
+        emit_line("br label %" + after_lbl);
+
+        *out_ << after_lbl << ":\n";
     }
 
     // ── Function definition ───────────────────────────────────────────────────
@@ -1196,6 +1300,138 @@ private:
         emit_line(t + " = call " + ret_t + " @" + owner + "__" + n->method
                   + "(" + arg_str + ")");
         return { t, ret_t };
+    }
+
+    // ── Lambda support ────────────────────────────────────────────────────────
+    // Lambdas are emitted as named top-level LLVM functions.
+    // The variable name becomes the function name: `add = fn(a,b) => a+b`
+    // emits `@add` and tracks it in lambda_vars_ for direct call dispatch.
+
+    void emit_lambda_def(const std::string& var_name, HirFuncDef* fn) {
+        // Use variable name as the LLVM function name
+        HirFuncDef named_fn(var_name, fn->params, fn->return_type,
+                            HirBlock{}, fn->is_variadic);
+        // We need to emit with the original body — use emit_func with a renamed copy
+        // Temporarily borrow body from fn (can't move since fn is not owned here)
+        // Use emit_func directly by building a temporary HirFuncDef
+        // Easiest: use a wrapper that calls emit_func internals
+        emit_func_named(var_name, fn->params, fn->return_type, fn->body);
+        lambda_vars_[var_name] = "@" + var_name;
+    }
+
+    void emit_func_named(const std::string& name,
+                         const std::vector<HirParam>& params,
+                         const std::string& return_type,
+                         const HirBlock& body) {
+        auto saved_locals = locals_;
+        auto saved_ret    = current_ret_type_;
+        auto saved_loops  = loop_stack_;
+        int  saved_tmp    = tmp_id_;
+        int  saved_lbl    = label_id_;
+        std::ostringstream saved_body;
+        saved_body << body_buf_.str();
+
+        reset_counters();
+
+        std::string ret_t = llvm_type(return_type);
+        current_ret_type_ = ret_t;
+
+        std::string param_str;
+        for (int i = 0; i < (int)params.size(); ++i) {
+            if (i) param_str += ", ";
+            param_str += llvm_type(params[i].type) + " %" + params[i].name + ".in";
+        }
+
+        final_out_ << "\ndefine " << ret_t << " @" << name
+                   << "(" << param_str << ") {\n"
+                   << "entry:\n";
+
+        for (auto& p : params) {
+            std::string pt  = llvm_type(p.type);
+            std::string ptr = "%" + p.name + ".addr";
+            emit_line(ptr + " = alloca " + pt);
+            emit_line("store " + pt + " %" + p.name + ".in, " + pt + "* " + ptr);
+            locals_[p.name] = { ptr, pt, p.type };
+        }
+
+        // Emit body — but body is const, so we need const_cast or a copy
+        // Since HirBlock is vector<unique_ptr> we cannot copy; use const refs
+        for (auto& node : body) emit_stmt(node.get());
+
+        if      (ret_t == "void"  ) emit_line("ret void");
+        else if (ret_t == "i64"   ) emit_line("ret i64 0");
+        else if (ret_t == "double") emit_line("ret double 0.0");
+        else if (ret_t == "i1"    ) emit_line("ret i1 0");
+        else                        emit_line("ret i8* null");
+
+        final_out_ << body_buf_.str() << "}\n";
+
+        locals_           = std::move(saved_locals);
+        current_ret_type_ = saved_ret;
+        loop_stack_       = std::move(saved_loops);
+        tmp_id_           = saved_tmp;
+        label_id_         = saved_lbl;
+        body_buf_.str(saved_body.str());
+        body_buf_.clear();
+        body_buf_.seekp(0, std::ios_base::end);
+        out_ = &body_buf_;
+    }
+
+    // ── Import support ────────────────────────────────────────────────────────
+    // Inline imported .luz files by parsing them and emitting their top-level
+    // function/class/struct definitions into the current module.
+
+    void emit_import(HirImport* n) {
+        if (source_dir_.empty()) return;
+
+        // Resolve path: try source_dir/path.luz and source_dir/path/init.luz
+        std::string path = n->path;
+        // Remove leading quote chars if any
+        while (!path.empty() && (path.front() == '"' || path.front() == '\''))
+            path = path.substr(1);
+        while (!path.empty() && (path.back() == '"' || path.back() == '\''))
+            path.pop_back();
+
+        // Try candidates
+        std::vector<std::string> candidates = {
+            source_dir_ + "/" + path + ".luz",
+            source_dir_ + "/../" + path + ".luz",
+            source_dir_ + "/../" + path + "/init.luz",
+        };
+
+        std::string content;
+        for (auto& cand : candidates) {
+            std::ifstream f(cand, std::ios::in | std::ios::binary);
+            if (f) {
+                std::ostringstream ss;
+                ss << f.rdbuf();
+                content = ss.str();
+                break;
+            }
+        }
+        if (content.empty()) return; // silently skip if not found
+
+        // Parse and lower
+        try {
+            auto tokens  = luz::lex(content);
+            auto program = luz::parse(tokens);
+            auto hir     = luz::lower_to_hir(program);
+
+            // Collect classes/structs/lambdas from imported module
+            collect_classes(hir);
+            collect_strings(hir);
+
+            // Emit only definitions (functions, classes) — not top-level stmts
+            for (auto& node : hir) {
+                if (node->kind == HirKind::FuncDef)
+                    emit_func(static_cast<HirFuncDef*>(node.get()));
+                else if (node->kind == HirKind::ClassDef)
+                    emit_class(static_cast<HirClassDef*>(node.get()));
+                // structs: type info already collected above
+            }
+        } catch (...) {
+            // Import failed — silently continue
+        }
     }
 
     // ── luz_powi helper ───────────────────────────────────────────────────────

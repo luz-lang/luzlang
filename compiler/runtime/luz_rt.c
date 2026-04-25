@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <setjmp.h>
 
 // ── Strings ───────────────────────────────────────────────────────────────────
 
@@ -139,4 +140,38 @@ void luz_dict_remove(LuzDict* d, const char* k) {
             return;
         }
     }
+}
+
+// ── attempt / rescue ──────────────────────────────────────────────────────────
+// setjmp/longjmp-based structured error handling.
+// The generated LLVM IR allocates a jmp_buf on the stack and registers it here.
+// luz_alert_throw() longjmps to the nearest registered rescue point.
+
+#define LUZ_RESCUE_MAX 32
+static void* luz_rescue_ptrs[LUZ_RESCUE_MAX];
+static int   luz_rescue_depth = 0;
+static char  luz_error_msg[1024] = {0};
+
+void luz_push_rescue_ptr(void* buf) {
+    if (luz_rescue_depth < LUZ_RESCUE_MAX)
+        luz_rescue_ptrs[luz_rescue_depth++] = buf;
+}
+
+void luz_pop_rescue(void) {
+    if (luz_rescue_depth > 0) luz_rescue_depth--;
+}
+
+void luz_alert_throw(const char* msg) {
+    strncpy(luz_error_msg, msg, 1023);
+    luz_error_msg[1023] = '\0';
+    if (luz_rescue_depth > 0) {
+        void* buf = luz_rescue_ptrs[--luz_rescue_depth];
+        longjmp(*(jmp_buf*)buf, 1);
+    }
+    fprintf(stderr, "Error: %s\n", msg);
+    exit(1);
+}
+
+const char* luz_get_error(void) {
+    return luz_error_msg;
 }
