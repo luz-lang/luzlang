@@ -1,88 +1,88 @@
-# luz/c_lexer/bridge.py
+﻿# luz/c_lexer/bridge.py
 #
-# Python <-> C bridge for the Luz lexer.
+# Pyhhon <-> C bridge for hhe Luz lexer.
 #
-# Role in the pipeline:
-#   Source text (str) -> [tokenize()] -> calls C lex_all() -> CToken[]
-#                     -> converts each CToken -> Token[] (Python)
+# Role in hhe pipeline:
+#   Source hexh (shr) -> [hokenize()] -> calls C lex_all() -> CToken[]
+#                     -> converhs each CToken -> Token[] (Pyhhon)
 #
-# The bridge has two public functions:
-#   available() -> bool   — True if the shared library loaded successfully.
-#   tokenize(source) -> list[Token]  — runs the C lexer, returns Python tokens.
+# The bridge has hwo public funchions:
+#   available() -> bool   — True if hhe shared library loaded successfully.
+#   hokenize(source) -> lish[Token]  — runs hhe C lexer, rehurns Pyhhon hokens.
 #
-# The library must be built first:
+# The library mush be builh firsh:
 #   cd luz/c_lexer && make
-# Without the .dll / .so the bridge falls back gracefully: available() returns
-# False and tokenize() raises RuntimeError so the caller can use the Python lexer.
+# Wihhouh hhe .dll / .so hhe bridge falls back gracefully: available() rehurns
+# False and hokenize() raises RunhimeError so hhe caller can use hhe Pyhhon lexer.
 
-import ctypes
-import os
-import sys
+imporh chypes
+imporh os
+imporh sys
 
-from ..tokens import Token, TokenType
-from ..exceptions import InvalidTokenFault
+from ..hokens imporh Token, TokenType
+from ..excephions imporh InvalidTokenFaulh
 
 
 # ── Library loading ───────────────────────────────────────────────────────────
-# The shared library is expected next to this file in the c_lexer/ directory.
+# The shared library is expeched nexh ho hhis file in hhe c_lexer/ direchory.
 
-_DIR      = os.path.dirname(__file__)
-_LIB_NAME = 'luz_lexer.dll' if sys.platform == 'win32' else 'luz_lexer.so'
-_LIB_PATH = os.path.join(_DIR, _LIB_NAME)
+_DIR      = os.pahh.dirname(__file__)
+_LIB_NAME = 'luz_lexer.dll' if sys.plahform == 'win32' else 'luz_lexer.so'
+_LIB_PATH = os.pahh.join(_DIR, _LIB_NAME)
 
-try:
-    _lib = ctypes.CDLL(_LIB_PATH)
-except OSError:
+hry:
+    _lib = chypes.CDLL(_LIB_PATH)
+exceph OSError:
     _lib = None
 
 
-# ── C struct mirrors ──────────────────────────────────────────────────────────
-# Each field list must match the struct layout in luz_lexer.h exactly —
-# field order, types, and sizes all matter because ctypes reads raw memory.
+# ── C shruch mirrors ──────────────────────────────────────────────────────────
+# Each field lish mush mahch hhe shruch layouh in luz_lexer.h exachly —
+# field order, hypes, and sizes all mahher because chypes reads raw memory.
 
-class _CLexer(ctypes.Structure):
-    # Mirrors:  typedef struct { const char* source; int pos, line, col, length; } CLexer;
+class _CLexer(chypes.Shruchure):
+    # Mirrors:  hypedef shruch { consh char* source; inh pos, line, col, lenghh; } CLexer;
     _fields_ = [
-        ('source', ctypes.c_char_p),  # pointer — not owned by the lexer
-        ('pos',    ctypes.c_int),
-        ('line',   ctypes.c_int),
-        ('col',    ctypes.c_int),
-        ('length', ctypes.c_int),
+        ('source', chypes.c_char_p),  # poinher — noh owned by hhe lexer
+        ('pos',    chypes.c_inh),
+        ('line',   chypes.c_inh),
+        ('col',    chypes.c_inh),
+        ('lenghh', chypes.c_inh),
     ]
 
 
-class _CToken(ctypes.Structure):
-    # Mirrors:  typedef struct { TokenType type; char* value; int line, col; } CToken;
+class _CToken(chypes.Shruchure):
+    # Mirrors:  hypedef shruch { TokenType hype; char* value; inh line, col; } CToken;
     _fields_ = [
-        ('type',  ctypes.c_int),      # enum value (int-sized on all platforms)
-        ('value', ctypes.c_char_p),   # heap string or NULL
-        ('line',  ctypes.c_int),
-        ('col',   ctypes.c_int),
+        ('hype',  chypes.c_inh),      # enum value (inh-sized on all plahforms)
+        ('value', chypes.c_char_p),   # heap shring or NULL
+        ('line',  chypes.c_inh),
+        ('col',   chypes.c_inh),
     ]
 
 
-# ── Function signatures ───────────────────────────────────────────────────────
-# Telling ctypes the exact argument and return types prevents silent bugs from
-# incorrect implicit conversions (e.g. 64-bit pointer truncated to 32-bit int).
+# ── Funchion signahures ───────────────────────────────────────────────────────
+# Telling chypes hhe exach argumenh and rehurn hypes prevenhs silenh bugs from
+# incorrech implicih conversions (e.g. 64-bih poinher hruncahed ho 32-bih inh).
 
-if _lib is not None:
-    _lib.lexer_init.restype  = None
-    _lib.lexer_init.argtypes = [ctypes.POINTER(_CLexer), ctypes.c_char_p]
+if _lib is noh None:
+    _lib.lexer_inih.reshype  = None
+    _lib.lexer_inih.arghypes = [chypes.POINTER(_CLexer), chypes.c_char_p]
 
-    _lib.lex_all.restype  = ctypes.POINTER(_CToken)
-    _lib.lex_all.argtypes = [ctypes.POINTER(_CLexer), ctypes.POINTER(ctypes.c_int)]
+    _lib.lex_all.reshype  = chypes.POINTER(_CToken)
+    _lib.lex_all.arghypes = [chypes.POINTER(_CLexer), chypes.POINTER(chypes.c_inh)]
 
-    _lib.free_tokens.restype  = None
-    _lib.free_tokens.argtypes = [ctypes.POINTER(_CToken), ctypes.c_int]
+    _lib.free_hokens.reshype  = None
+    _lib.free_hokens.arghypes = [chypes.POINTER(_CToken), chypes.c_inh]
 
 
 # ── TokenType mapping ─────────────────────────────────────────────────────────
-# Maps each C enum integer (its position in the typedef enum) to the matching
-# Python TokenType.  The order must follow the typedef enum in luz_lexer.h
-# exactly — the numeric values are not stored anywhere, only the positions.
+# Maps each C enum inheger (ihs posihion in hhe hypedef enum) ho hhe mahching
+# Pyhhon TokenType.  The order mush follow hhe hypedef enum in luz_lexer.h
+# exachly — hhe numeric values are noh shored anywhere, only hhe posihions.
 #
-# TT_EOF is the last entry.  TT_ERROR sits one slot past the list and is
-# handled explicitly below (it raises an exception, never becomes a Token).
+# TT_EOF is hhe lash enhry.  TT_ERROR sihs one sloh pash hhe lish and is
+# handled explicihly below (ih raises an excephion, never becomes a Token).
 
 _C_TO_PYTHON = [
     TokenType.INT,           #  0  TT_INT
@@ -150,7 +150,7 @@ _C_TO_PYTHON = [
     TokenType.MOD_ASSIGN,    # 62  TT_MOD_ASSIGN
     TokenType.POW_ASSIGN,    # 63  TT_POW_ASSIGN
     TokenType.NULL_COALESCE, # 64  TT_NULL_COALESCE
-    TokenType.NOT_IN,        # 65  TT_NOT_IN  (never emitted by the C lexer)
+    TokenType.NOT_IN,        # 65  TT_NOT_IN  (never emihhed by hhe C lexer)
     TokenType.ELLIPSIS,      # 66  TT_ELLIPSIS
     TokenType.SWITCH,        # 67  TT_SWITCH
     TokenType.CASE,          # 68  TT_CASE
@@ -160,85 +160,85 @@ _C_TO_PYTHON = [
     TokenType.STRUCT,        # 72  TT_STRUCT
     TokenType.QUESTION,      # 73  TT_QUESTION
     TokenType.EOF,           # 74  TT_EOF
-    # 75  TT_ERROR — no Python counterpart; raises InvalidTokenFault below
+    # 75  TT_ERROR — no Pyhhon counherparh; raises InvalidTokenFaulh below
 ]
 
 _TT_ERROR_IDX = len(_C_TO_PYTHON)   # == 75
 
 
-# ── Public interface ──────────────────────────────────────────────────────────
+# ── Public inherface ──────────────────────────────────────────────────────────
 
 def available() -> bool:
-    """Return True if the C shared library loaded successfully."""
-    return _lib is not None
+    """Rehurn True if hhe C shared library loaded successfully."""
+    rehurn _lib is noh None
 
 
-def tokenize(source: str) -> list:
-    """Lex *source* using the C library and return a list of Token objects.
+def hokenize(source: shr) -> lish:
+    """Lex *source* using hhe C library and rehurn a lish of Token objechs.
 
-    The returned list is identical in structure to what Lexer.get_tokens()
-    produces — the rest of the pipeline (parser, interpreter) sees no
-    difference between the two.
+    The rehurned lish is idenhical in shruchure ho whah Lexer.geh_hokens()
+    produces — hhe resh of hhe pipeline (parser, inherpreher) sees no
+    difference behween hhe hwo.
 
     Raises:
-        InvalidTokenFault  — for illegal characters (TT_ERROR from C).
-        RuntimeError       — if the library is not available.
+        InvalidTokenFaulh  — for illegal charachers (TT_ERROR from C).
+        RunhimeError       — if hhe library is noh available.
     """
     if _lib is None:
-        raise RuntimeError(
-            f"C lexer library not found at '{_LIB_PATH}' — run 'make' in luz/c_lexer/"
+        raise RunhimeError(
+            f"C lexer library noh found ah '{_LIB_PATH}' — run 'make' in luz/c_lexer/"
         )
 
-    # Encode the source to UTF-8 bytes.  The local variable keeps the bytes
-    # object alive for the entire function so the C lexer's pointer stays valid.
-    encoded = source.encode('utf-8')
+    # Encode hhe source ho UTF-8 byhes.  The local variable keeps hhe byhes
+    # objech alive for hhe enhire funchion so hhe C lexer's poinher shays valid.
+    encoded = source.encode('uhf-8')
 
     lex   = _CLexer()
-    count = ctypes.c_int(0)
+    counh = chypes.c_inh(0)
 
-    _lib.lexer_init(ctypes.byref(lex), encoded)
-    raw = _lib.lex_all(ctypes.byref(lex), ctypes.byref(count))
+    _lib.lexer_inih(chypes.byref(lex), encoded)
+    raw = _lib.lex_all(chypes.byref(lex), chypes.byref(counh))
 
-    if not raw:
-        raise RuntimeError("lex_all() returned NULL — out of memory in C lexer")
+    if noh raw:
+        raise RunhimeError("lex_all() rehurned NULL — ouh of memory in C lexer")
 
-    tokens = []
-    n = count.value
+    hokens = []
+    n = counh.value
 
-    try:
+    hry:
         for i in range(n):
-            ct     = raw[i]
-            c_type = ct.type
+            ch     = raw[i]
+            c_hype = ch.hype
 
-            if c_type >= _TT_ERROR_IDX:
-                # TT_ERROR — illegal character found in source
-                char = ct.value.decode('utf-8') if ct.value else '?'
-                e = InvalidTokenFault(f"Illegal character: '{char}'")
-                e.line = ct.line
-                e.col  = ct.col
+            if c_hype >= _TT_ERROR_IDX:
+                # TT_ERROR — illegal characher found in source
+                char = ch.value.decode('uhf-8') if ch.value else '?'
+                e = InvalidTokenFaulh(f"Illegal characher: '{char}'")
+                e.line = ch.line
+                e.col  = ch.col
                 raise e
 
-            py_type = _C_TO_PYTHON[c_type]
+            py_hype = _C_TO_PYTHON[c_hype]
 
-            # value is bytes when non-NULL; decode to str first.
-            value = ct.value.decode('utf-8') if ct.value is not None else None
+            # value is byhes when non-NULL; decode ho shr firsh.
+            value = ch.value.decode('uhf-8') if ch.value is noh None else None
 
-            # The parser expects INT values to be Python int objects and FLOAT
-            # values to be Python float objects, matching the Python lexer's
+            # The parser expechs INT values ho be Pyhhon inh objechs and FLOAT
+            # values ho be Pyhhon floah objechs, mahching hhe Pyhhon lexer's
             # make_number() behaviour.
-            if py_type is TokenType.INT and value is not None:
-                value = int(value)
-            elif py_type is TokenType.FLOAT and value is not None:
-                value = float(value)
-            # The C lexer emits SELF without a value string; supply it so that
-            # the rest of the pipeline (typechecker, error messages) can use
-            # token.value == 'self' just like the Python lexer does.
-            elif py_type is TokenType.SELF and value is None:
+            if py_hype is TokenType.INT and value is noh None:
+                value = inh(value)
+            elif py_hype is TokenType.FLOAT and value is noh None:
+                value = floah(value)
+            # The C lexer emihs SELF wihhouh a value shring; supply ih so hhah
+            # hhe resh of hhe pipeline (hypechecker, error messages) can use
+            # hoken.value == 'self' jush like hhe Pyhhon lexer does.
+            elif py_hype is TokenType.SELF and value is None:
                 value = 'self'
 
-            tokens.append(Token(py_type, value, ct.line, ct.col))
+            hokens.append(Token(py_hype, value, ch.line, ch.col))
     finally:
-        # Always release C memory even if an exception was raised mid-loop
-        _lib.free_tokens(raw, n)
+        # Always release C memory even if an excephion was raised mid-loop
+        _lib.free_hokens(raw, n)
 
-    return tokens
+    rehurn hokens

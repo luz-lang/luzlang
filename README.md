@@ -1,10 +1,10 @@
-<p align="center">
+﻿<p align="center">
   <img src="img/icon.png" alt="Luz logo" width="676" height="369">
 </p>
 
 # Luz Programming Language
 
-**Luz** is an open-source, interpreted programming language written in Python. It features clean syntax, optional static typing, object-oriented programming, closures, pattern matching, error handling, and a built-in package manager — all in a single file you can run with `python main.py`.
+**Luz** is an open-source compiled programming language with a native C++ compiler. It features clean syntax, optional static typing, object-oriented programming, closures, pattern matching, error handling, and a built-in package manager.
 
 ```
 name = listen("What is your name? ")
@@ -17,9 +17,9 @@ for i = 1 to 5 {
 
 ## Features
 
-- **Optional static typing** — annotate variables, parameters, and return types; the type checker validates them before execution
+- **Optional static typing** — annotate variables, parameters, and return types; the type checker validates them at compile time
 - **Nullable types** — `T?` allows `null` alongside any type; `??` provides a null-safe fallback
-- **Generic collections** — `list[int]`, `dict[string, float]`, enforced at assignment time
+- **Generic collections** — `list[int]`, `dict[string, float]`, enforced at compile time
 - **Fixed-size numeric types** — `int8`…`int64`, `uint8`…`uint64`, `float32`, `float64`
 - **Constants** — `const NAME: type = value`, checked at compile time
 - **Structs** — `struct` defines typed, lightweight value records with optional defaults
@@ -39,23 +39,23 @@ for i = 1 to 5 {
 - **Object-oriented programming** — classes, inheritance (`extends`), method overriding, `super`
 - **Error handling** — `attempt / rescue / finally` blocks and `alert`
 - **Modules** — `import`, `from "x" import name`, `import "x" as alias`
-- **Static type checker** — reports type errors, unused variables, and arity mismatches before execution
+- **Static type checker** — reports type errors, unused variables, and arity mismatches at compile time
 - **Package manager** — [Ray](#package-manager-ray), installs packages from GitHub
 - **Standard library** — `luz-math`, `luz-random`, `luz-io`, `luz-system`, `luz-clock`, `luz-types`
 - **Helpful errors** — every error includes the line number
-- **REPL** — interactive shell for quick experimentation
+- **Native compiler** — compiles to machine code via LLVM IR
 - **VS Code extension** — syntax highlighting, autocompletion, error detection, hover docs, snippets
 - **Standalone installer** — no Python required
 
 ## Quick start
 
-Requires **Python 3.8+**, no external dependencies.
+Requires **clang** to produce native binaries (included with LLVM).
 
 ```bash
 git clone https://github.com/Elabsurdo984/luz-lang.git
 cd luz-lang
-python main.py          # open the REPL
-python main.py file.luz # run a file
+luzc file.luz          # compile to native binary
+luzc file.luz --run    # compile + run
 ```
 
 Or download the **[Windows installer](https://elabsurdo984.github.io/luz-lang/download/)** and run `luz` from anywhere.

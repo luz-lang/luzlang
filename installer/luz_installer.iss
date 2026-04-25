@@ -95,7 +95,7 @@ WelcomeLabel2=This will install Luz {#AppVersion} on your computer.%n%nLuz is a 
 ; PATH — on by default
 Name: "addtopath";        Description: "Add Luz to the system &PATH (recommended)"; GroupDescription: "Environment:"; Flags: checkedonce
 ; .luz file association
-Name: "fileassoc";        Description: "Associate .&luz files with the Luz interpreter"; GroupDescription: "File associations:"; Flags: checkedonce
+Name: "fileassoc";        Description: "Associate .&luz files with the Luz compiler"; GroupDescription: "File associations:"; Flags: checkedonce
 ; Desktop / Start Menu shortcuts
 Name: "desktopicon";      Description: "Create a &desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 Name: "startmenuicon";    Description: "Create &Start Menu shortcuts"; GroupDescription: "Shortcuts:"; Flags: checkedonce
