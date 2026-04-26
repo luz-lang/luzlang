@@ -5,6 +5,46 @@ Format: `## [version] - YYYY-MM-DD` followed by categorized entries.
 
 ---
 
+## [2.0beta] - 2026-04-26
+
+### Added
+
+**Zero-dependency native compiler**
+- New compilation pipeline: Luz source → HIR → C source → TCC → native binary — no LLVM, no clang required
+- C code emitter (`ccodegen.cpp`) that lowers HIR directly to self-contained C99 source files
+- Bundled TCC v0.9.27 (x86-64 Windows, ~100 KB) — users need no external toolchain to compile Luz programs
+- `--emit-c` CLI flag: print generated C source to stdout or write to file with `-o`
+- `LUZ_TCC` environment variable to override the TCC binary path
+- `LUZ_RT` environment variable to override the runtime C file path
+- TCC is auto-discovered via `LUZ_HOME` (set by the installer), `LUZ_TCC` env var, compile-time bundled path, or `tcc` in PATH — in that order
+- `listen(prompt)` builtin: reads a line from stdin (equivalent to Python `input()`)
+- `to_int(s)`, `to_float(s)`, `to_bool(s)` builtins: string-to-primitive conversions
+
+**C runtime (`luz_rt.c`)**
+- String operations: `luz_str_concat`, `luz_str_len`, `luz_str_eq`, `luz_str_contains`
+- Conversion helpers: `luz_to_str_int`, `luz_to_str_float`, `luz_to_str_bool`
+- Type conversions: `luz_to_int`, `luz_to_float`, `luz_to_bool`
+- I/O: `luz_listen` (prompted line input)
+- Dict/list: `luz_dict_new`, `luz_dict_set_*`, `luz_dict_get_*`, `luz_dict_len`, `luz_dict_contains`, `luz_dict_remove`
+- Exception system: `luz_push_rescue_ptr`, `luz_pop_rescue`, `luz_alert_throw`, `luz_get_error` — backed by `setjmp`/`longjmp`
+- Math: `luz_powi` (integer exponentiation)
+
+**Installer**
+- Windows installer now bundles TCC under `{app}\tcc\` — no post-install setup needed
+- `LUZ_HOME` registry variable set at install time so `luzc` finds TCC and the runtime automatically
+
+### Changed
+
+- `--emit-llvm` is now marked legacy; `--emit-c` is the primary IR inspection flag
+- Release workflow copies `compiler/tools/tcc/` into `dist/tcc/` before running Inno Setup
+
+### Notes
+
+- 2.0 is a **beta** release: core language features (functions, classes, control flow, strings, dicts, `attempt`/`rescue`) are fully supported through the new pipeline; some advanced builtins may not yet be wired to C codegen
+- The Python interpreter (`luz.exe`) remains available for running `.luz` files interpreted; `luzc` is the native compiler
+
+---
+
 ## [1.19.0] - 2026-04-12
 
 ### Added
