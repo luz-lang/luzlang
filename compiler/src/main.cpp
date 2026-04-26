@@ -133,17 +133,43 @@ std::string shell_quote(const std::string& s) {
 
 static const char* kTccDefault = LUZ_TCC_DEFAULT;
 
-// Find tcc: $LUZ_TCC env var → compile-time bundled path → "tcc" in PATH.
+// Check if a file exists.
+static bool file_exists(const std::string& path) {
+    std::ifstream f(path);
+    return f.good();
+}
+
+// Find tcc: $LUZ_TCC → $LUZ_HOME/tcc/tcc.exe → compile-time path → "tcc".
 std::string find_tcc() {
     const char* env = std::getenv("LUZ_TCC");
     if (env && env[0]) return env;
-    if (kTccDefault && kTccDefault[0]) return kTccDefault;
+    const char* home = std::getenv("LUZ_HOME");
+    if (home && home[0]) {
+#ifdef _WIN32
+        std::string p = std::string(home) + "\\tcc\\tcc.exe";
+#else
+        std::string p = std::string(home) + "/tcc/tcc";
+#endif
+        if (file_exists(p)) return p;
+    }
+    if (kTccDefault && kTccDefault[0] && file_exists(kTccDefault)) return kTccDefault;
     return "tcc";
 }
 
-// Find luz_rt.c: $LUZ_RT_SOURCE compile-time constant → "luz_rt.c" fallback.
+// Find luz_rt.c: $LUZ_RT → $LUZ_HOME/luz_rt.c → compile-time path → "luz_rt.c".
 std::string find_rt() {
-    if (kRtSource && kRtSource[0]) return kRtSource;
+    const char* env = std::getenv("LUZ_RT");
+    if (env && env[0]) return env;
+    const char* home = std::getenv("LUZ_HOME");
+    if (home && home[0]) {
+#ifdef _WIN32
+        std::string p = std::string(home) + "\\luz_rt.c";
+#else
+        std::string p = std::string(home) + "/luz_rt.c";
+#endif
+        if (file_exists(p)) return p;
+    }
+    if (kRtSource && kRtSource[0] && file_exists(kRtSource)) return kRtSource;
     return "luz_rt.c";
 }
 

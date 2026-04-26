@@ -34,6 +34,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path dist
           Copy-Item compiler\build\Release\luzc.exe dist\luzc.exe
           Copy-Item compiler\runtime\luz_rt.c dist\luz_rt.c
+          Copy-Item -Recurse compiler\tools\tcc dist\tcc
 
       - name: Install Inno Setup
         run: choco install innosetup --yes

@@ -110,6 +110,9 @@ Source: "..\dist\luzc.exe";   DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\luz_rt.c";   DestDir: "{app}"; Flags: ignoreversion
 Source: "..\dist\ray.exe";    DestDir: "{app}"; Flags: ignoreversion
 
+; Bundled TCC compiler (zero external dependencies)
+Source: "..\dist\tcc\*"; DestDir: "{app}\tcc"; Flags: ignoreversion recursesubdirs createallsubdirs
+
 ; Standard library
 Source: "..\libs\*"; DestDir: "{app}\luz_modules"; Flags: ignoreversion recursesubdirs createallsubdirs
 
@@ -221,8 +224,9 @@ Filename: "{cmd}"; Parameters: "/c setx LUZ_HOME """""; \
 ; ── [UninstallDelete] ────────────────────────────────────────────────────────
 
 [UninstallDelete]
-; Remove the modules directory
+; Remove the modules directory and bundled TCC
 Type: filesandordirs; Name: "{app}\luz_modules"
+Type: filesandordirs; Name: "{app}\tcc"
 
 ; ── [Code] ───────────────────────────────────────────────────────────────────
 
