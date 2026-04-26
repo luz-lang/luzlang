@@ -183,3 +183,20 @@ long long luz_powi(long long base, long long exp) {
     while (exp-- > 0) result *= base;
     return result;
 }
+
+// ── I/O ───────────────────────────────────────────────────────────────────────
+
+char* luz_listen(const char* prompt) {
+    if (prompt && prompt[0]) { printf("%s", prompt); fflush(stdout); }
+    char buf[4096];
+    if (!fgets(buf, sizeof(buf), stdin)) return strdup("");
+    size_t len = strlen(buf);
+    if (len > 0 && buf[len-1] == '\n') buf[len-1] = '\0';
+    return strdup(buf);
+}
+
+// ── Conversions ───────────────────────────────────────────────────────────────
+
+long long luz_to_int(const char* s) { return (long long)atol(s); }
+double    luz_to_float(const char* s) { return atof(s); }
+int       luz_to_bool(const char* s) { return s && s[0] && strcmp(s,"false") != 0 && strcmp(s,"0") != 0; }

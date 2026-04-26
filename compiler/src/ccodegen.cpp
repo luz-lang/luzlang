@@ -161,7 +161,11 @@ private:
             "extern void      luz_pop_rescue(void);\n"
             "extern void      luz_alert_throw(const char*);\n"
             "extern const char* luz_get_error(void);\n"
-            "extern long long luz_powi(long long,long long);\n\n";
+            "extern long long luz_powi(long long,long long);\n"
+            "extern char*     luz_listen(const char*);\n"
+            "extern long long luz_to_int(const char*);\n"
+            "extern double    luz_to_float(const char*);\n"
+            "extern int       luz_to_bool(const char*);\n\n";
     }
 
     // ── Class registry ────────────────────────────────────────────────────────
@@ -517,6 +521,22 @@ private:
         if (n->func == "exit") {
             line("exit((int)" + (n->args.empty() ? std::string("0") : expr(n->args[0].get())) + ");");
             return "";
+        }
+        if (n->func == "listen") {
+            std::string prompt = n->args.empty() ? "\"\"" : expr(n->args[0].get());
+            return "luz_listen(" + prompt + ")";
+        }
+        if (n->func == "to_int") {
+            std::string v = n->args.empty() ? "\"\"" : expr(n->args[0].get());
+            return "luz_to_int(" + v + ")";
+        }
+        if (n->func == "to_float") {
+            std::string v = n->args.empty() ? "\"\"" : expr(n->args[0].get());
+            return "luz_to_float(" + v + ")";
+        }
+        if (n->func == "to_bool") {
+            std::string v = n->args.empty() ? "\"\"" : expr(n->args[0].get());
+            return "luz_to_bool(" + v + ")";
         }
         // Constructor
         if (classes_.count(n->func)) {
