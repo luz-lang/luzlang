@@ -9,10 +9,11 @@
 #include <vector>
 
 #ifndef _WIN32
-#  include <unistd.h>    // unlink
+#  include <unistd.h>
 #endif
 
 #include "luz/ast_printer.hpp"
+#include "luz/ccodegen.hpp"
 #include "luz/codegen.hpp"
 #include "luz/diagnostics.hpp"
 #include "luz/hir.hpp"
@@ -26,7 +27,7 @@
 
 namespace {
 
-constexpr const char* kVersion    = "2.0.0-dev";
+constexpr const char* kVersion    = "2.0.0beta";
 constexpr const char* kRtSource   = LUZ_RT_SOURCE;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -39,15 +40,19 @@ void print_usage() {
         "  luzc <file.luz>                    compile to native binary\n"
         "  luzc <file.luz> -o <out>           compile with custom output name\n"
         "  luzc <file.luz> --run              compile + run immediately\n"
-        "  luzc <file.luz> --emit-llvm        emit LLVM IR to stdout\n"
-        "  luzc <file.luz> --emit-llvm -o f   emit LLVM IR to file\n"
+        "  luzc <file.luz> --emit-c           emit C source to stdout\n"
+        "  luzc <file.luz> --emit-c -o f      emit C source to file\n"
+        "  luzc <file.luz> --emit-llvm        emit LLVM IR to stdout (legacy)\n"
         "  luzc <file.luz> --tokens           dump token stream\n"
         "  luzc <file.luz> --ast              dump parsed AST\n"
         "  luzc <file.luz> --hir              dump lowered HIR\n"
         "  luzc <file.luz> --check            type-check, human-readable\n"
         "  luzc <file.luz> --check-json       type-check, JSON output\n"
         "  luzc --version                     print version\n"
-        "  luzc --help                        show this message\n";
+        "  luzc --help                        show this message\n"
+        "\n"
+        "Environment:\n"
+        "  LUZ_TCC    path to tcc binary (default: tcc in PATH)\n";
 }
 
 std::string read_file(const std::string& path) {
@@ -60,9 +65,29 @@ std::string read_file(const std::string& path) {
 
 // Return a writable temp file path with the given suffix.
 std::string temp_path(const std::string& suffix) {
-    char buf[L_tmpnam];
-    std::tmpnam(buf);
-    return std::string(buf) + suffix;
+    // Use TEMP env var to locate the system temp directory.
+    const char* tmp_dir = std::getenv("TEMP");
+    if (!tmp_dir) tmp_dir = std::getenv("TMP");
+    if (!tmp_dir) tmp_dir = std::getenv("TMPDIR");
+#ifdef _WIN32
+    if (!tmp_dir) tmp_dir = "C:\\Temp";
+#else
+    if (!tmp_dir) tmp_dir = "/tmp";
+#endif
+    // Build a unique name using a simple counter + PID-like trick.
+    static int counter = 0;
+    char buf[512];
+    std::snprintf(buf, sizeof(buf), "%s%sluzc_%d_%d%s",
+                  tmp_dir,
+#ifdef _WIN32
+                  "\\",
+#else
+                  "/",
+#endif
+                  static_cast<int>(std::hash<std::string>{}(suffix) & 0xFFFF),
+                  ++counter,
+                  suffix.c_str());
+    return buf;
 }
 
 void delete_file(const std::string& path) {
@@ -71,18 +96,55 @@ void delete_file(const std::string& path) {
 
 // Run a shell command. Returns the process exit code.
 int run_cmd(const std::string& cmd) {
+#ifdef _WIN32
+    // cmd.exe /c strips outer quotes when the command starts with ";
+    // wrap the whole thing so the quoted executable path is preserved.
+    return std::system(("\"" + cmd + "\"").c_str());
+#else
     return std::system(cmd.c_str());
+#endif
+}
+
+// On Windows, normalize forward slashes to backslashes.
+std::string native_path(const std::string& s) {
+#ifdef _WIN32
+    std::string out = s;
+    for (char& c : out) if (c == '/') c = '\\';
+    return out;
+#else
+    return s;
+#endif
 }
 
 // Escape a path for use in a shell command (handles spaces).
 std::string shell_quote(const std::string& s) {
 #ifdef _WIN32
-    return "\"" + s + "\"";
+    return "\"" + native_path(s) + "\"";
 #else
     std::string out = "'";
     for (char c : s) { if (c == '\'') out += "'\\''"; else out += c; }
     return out + "'";
 #endif
+}
+
+#ifndef LUZ_TCC_DEFAULT
+#  define LUZ_TCC_DEFAULT ""
+#endif
+
+static const char* kTccDefault = LUZ_TCC_DEFAULT;
+
+// Find tcc: $LUZ_TCC env var → compile-time bundled path → "tcc" in PATH.
+std::string find_tcc() {
+    const char* env = std::getenv("LUZ_TCC");
+    if (env && env[0]) return env;
+    if (kTccDefault && kTccDefault[0]) return kTccDefault;
+    return "tcc";
+}
+
+// Find luz_rt.c: $LUZ_RT_SOURCE compile-time constant → "luz_rt.c" fallback.
+std::string find_rt() {
+    if (kRtSource && kRtSource[0]) return kRtSource;
+    return "luz_rt.c";
 }
 
 // Derive default output name from source file.
@@ -173,39 +235,48 @@ int cmd_check_json(const std::string& source, const std::string& /*file*/) {
     return errors.empty() ? 0 : 1;
 }
 
-// Compile source → LLVM IR → native binary via clang.
-// Returns exit code (0 = success).
+int cmd_emit_c(const std::string& source, const std::string& src_file,
+               const std::string& out_path) {
+    auto hir = luz::lower_to_hir(luz::parse(luz::lex(source)));
+    if (out_path.empty() || out_path == "-") {
+        luz::emit_c(std::cout, hir, src_file);
+        return 0;
+    }
+    std::ofstream of(out_path, std::ios::out | std::ios::binary);
+    if (!of) throw std::runtime_error("cannot open '" + out_path + "'");
+    luz::emit_c(of, hir, src_file);
+    std::cerr << "luzc: wrote C source to " << out_path << "\n";
+    return 0;
+}
+
+// Compile source → C → native binary via TCC (zero external dependencies).
 int cmd_compile(const std::string& source, const std::string& src_file,
                 const std::string& output, bool verbose) {
-    // 1. Emit LLVM IR to a temp file
-    std::string ir_file = temp_path(".ll");
+    // 1. Emit C to a temp file
+    std::string c_file = temp_path(".c");
     {
-        std::ofstream of(ir_file, std::ios::out | std::ios::binary);
-        if (!of) throw std::runtime_error("cannot create temp IR file");
-        luz::emit_llvm_ir(of, luz::lower_to_hir(luz::parse(luz::lex(source))),
-                          src_file);
+        std::ofstream of(c_file, std::ios::out | std::ios::binary);
+        if (!of) throw std::runtime_error("cannot create temp C file");
+        luz::emit_c(of, luz::lower_to_hir(luz::parse(luz::lex(source))), src_file);
     }
 
-    // 2. Build clang command: ir + runtime C source → binary
-    std::string rt = kRtSource;
-    if (rt.empty()) {
-        // Fallback: look for luz_rt.c next to the binary
-        rt = "luz_rt.c";
-    }
+    // 2. Build tcc command: c_file + runtime → binary
+    std::string tcc = find_tcc();
+    std::string rt  = find_rt();
 
-    std::string cmd = "clang -O2 "
-                    + shell_quote(ir_file) + " "
-                    + shell_quote(rt)      + " "
+    std::string cmd = shell_quote(tcc) + " "
+                    + shell_quote(c_file) + " "
+                    + shell_quote(rt)     + " "
                     + "-o " + shell_quote(output);
 
     if (verbose) std::cerr << "luzc: " << cmd << "\n";
 
     int rc = run_cmd(cmd);
-    delete_file(ir_file);
+    delete_file(c_file);
 
     if (rc != 0) {
-        std::cerr << "luzc: clang failed (exit " << rc << ")\n"
-                  << "      Make sure clang is in PATH.\n";
+        std::cerr << "luzc: tcc failed (exit " << rc << ")\n"
+                  << "      Make sure tcc is in PATH or set LUZ_TCC.\n";
         return 1;
     }
 
@@ -279,6 +350,7 @@ int main(int argc, char** argv) {
         if (mode == "--hir")        return cmd_hir(source);
         if (mode == "--check")      return cmd_check(source, file);
         if (mode == "--check-json") return cmd_check_json(source, file);
+        if (mode == "--emit-c")     return cmd_emit_c(source, file, output);
         if (mode == "--emit-llvm")  return cmd_emit_llvm(source, file, output);
         if (mode == "--run")        return cmd_run(source, file);
 

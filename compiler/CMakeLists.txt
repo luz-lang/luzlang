@@ -40,6 +40,7 @@ add_executable(luzc
     src/typechecker.cpp
     src/hir.cpp
     src/codegen.cpp
+    src/ccodegen.cpp
 )
 
 target_include_directories(luzc PRIVATE
@@ -48,6 +49,7 @@ target_include_directories(luzc PRIVATE
 
 target_compile_definitions(luzc PRIVATE
     LUZ_RT_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/runtime/luz_rt.c"
+    LUZ_TCC_DEFAULT="${CMAKE_CURRENT_SOURCE_DIR}/tools/tcc/tcc.exe"
 )
 
 target_link_libraries(luzc PRIVATE luz_c_lexer luz_rt)

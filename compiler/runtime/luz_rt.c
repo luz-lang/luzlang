@@ -175,3 +175,11 @@ void luz_alert_throw(const char* msg) {
 const char* luz_get_error(void) {
     return luz_error_msg;
 }
+
+// ── Math ──────────────────────────────────────────────────────────────────────
+
+long long luz_powi(long long base, long long exp) {
+    long long result = 1;
+    while (exp-- > 0) result *= base;
+    return result;
+}
