@@ -311,7 +311,7 @@ private:
     }
 
     // Scan a block for return-with-value to infer a return type.
-    static std::string scan_return_type(const HirBlock& body) {
+    std::string scan_return_type(const HirBlock& body) {
         for (auto& n : body) {
             if (n->kind == HirKind::Return) {
                 auto* r = static_cast<HirReturn*>(n.get());
@@ -330,7 +330,14 @@ private:
                         auto* l = static_cast<HirLoad*>(r->value.get());
                         return c_type(l->type);  // may be long long for unknown
                     }
-                    if (r->value->kind == HirKind::BinOp) return "long long";
+                    // BinOp used to hardcode "long long", which truncated
+                    // float-returning expressions like `(a + b) / 2.0` to
+                    // an int return type and broke any function that
+                    // returned a non-int arithmetic result (issue #99).
+                    // Defer to infer_type so the HIR's type tag drives the
+                    // forward-declared return type.
+                    if (r->value->kind == HirKind::BinOp)
+                        return infer_type(r->value.get());
                     if (r->value->kind == HirKind::Call) {
                         auto* c = static_cast<HirCall*>(r->value.get());
                         return c_ret_type(c->return_type);
