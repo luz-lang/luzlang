@@ -200,3 +200,30 @@ char* luz_listen(const char* prompt) {
 long long luz_to_int(const char* s) { return (long long)atol(s); }
 double    luz_to_float(const char* s) { return atof(s); }
 int       luz_to_bool(const char* s) { return s && s[0] && strcmp(s,"false") != 0 && strcmp(s,"0") != 0; }
+
+// ── List helpers ──────────────────────────────────────────────────────────────
+
+/* Convert an integer index to its string key.
+ * Uses a static buffer — safe for single-threaded use when consumed immediately. */
+char* luz_idx_key(long long i) {
+    static char buf[32];
+    snprintf(buf, sizeof(buf), "%lld", i);
+    return buf;
+}
+
+void luz_list_append(LuzDict* list, long long val) {
+    long long n = luz_dict_len(list);
+    char key[32];
+    snprintf(key, sizeof(key), "%lld", n);
+    luz_dict_set_int(list, key, val);
+}
+
+long long luz_list_pop(LuzDict* list) {
+    long long n = luz_dict_len(list);
+    if (n == 0) { luz_alert_throw("pop from empty list"); return 0; }
+    char key[32];
+    snprintf(key, sizeof(key), "%lld", n - 1);
+    long long val = luz_dict_get_int(list, key);
+    luz_dict_remove(list, key);
+    return val;
+}

@@ -82,6 +82,35 @@ public:
             else                                    stmts.push_back(n.get());
         }
 
+        // Pre-pass: collect and emit nested FuncDef nodes as top-level functions
+        // so they are available before main() and class methods that reference them.
+        {
+            std::vector<HirFuncDef*> nested;
+            for (auto* f : funcs) {
+                collect_nested_funcs(static_cast<HirFuncDef*>(f)->body, nested);
+            }
+            for (auto* fn : nested) {
+                if (!nested_emitted_.count(fn->name)) {
+                    // Emit forward decl
+                    std::string frt = c_ret_type(fn->return_type);
+                    if (frt == "void" && (fn->return_type.empty() || fn->return_type == "unknown"))
+                        frt = scan_return_type(fn->body);
+                    out_ << frt << " " << fn->name << "(";
+                    if (fn->params.empty()) out_ << "void";
+                    for (int i = 0; i < (int)fn->params.size(); ++i) {
+                        if (i) out_ << ", ";
+                        out_ << c_type(fn->params[i].type) << " " << fn->params[i].name;
+                    }
+                    out_ << ");\n";
+                    nested_emitted_.insert(fn->name);
+                    lambdas_.insert(fn->name);
+                }
+            }
+            for (auto* fn : nested) {
+                emit_func(fn, "", false);
+            }
+        }
+
         for (auto* c : classes) emit_class(static_cast<HirClassDef*>(c));
         for (auto* f : funcs)   emit_func(static_cast<HirFuncDef*>(f), "", false);
 
@@ -165,7 +194,10 @@ private:
             "extern char*     luz_listen(const char*);\n"
             "extern long long luz_to_int(const char*);\n"
             "extern double    luz_to_float(const char*);\n"
-            "extern int       luz_to_bool(const char*);\n\n";
+            "extern int       luz_to_bool(const char*);\n"
+            "extern char*     luz_idx_key(long long);\n"
+            "extern void      luz_list_append(LuzDict*,long long);\n"
+            "extern long long luz_list_pop(LuzDict*);\n\n";
     }
 
     // ── Class registry ────────────────────────────────────────────────────────
@@ -357,6 +389,7 @@ private:
         case HirKind::Call: {
             auto* c = static_cast<HirCall*>(n);
             if (classes_.count(c->func)) return "LuzDict*";
+            if (c->func == "range") return "LuzDict*";
             std::string rt = c->return_type;
             if (rt.empty() || rt == "unknown") {
                 auto fit = func_ret_.find(c->func);
@@ -366,6 +399,7 @@ private:
             return c_type(rt);
         }
         case HirKind::Dict: return "LuzDict*";
+        case HirKind::List: return "LuzDict*";
         default: return "long long";
         }
     }
@@ -407,6 +441,7 @@ private:
         case HirKind::FieldLoad:  return emit_field_load(static_cast<HirFieldLoad*>(n));
         case HirKind::ObjectCall: return emit_objcall_expr(static_cast<HirObjectCall*>(n));
         case HirKind::Dict:       return emit_dict_expr(static_cast<HirDict*>(n));
+        case HirKind::List:       return emit_list_expr(static_cast<HirList*>(n));
         case HirKind::Index:      return emit_index_expr(static_cast<HirIndex*>(n));
         case HirKind::If: {
             // if-as-expression: emit as temp variable
@@ -538,6 +573,49 @@ private:
             std::string v = n->args.empty() ? "\"\"" : expr(n->args[0].get());
             return "luz_to_bool(" + v + ")";
         }
+        // range()
+        if (n->func == "range") {
+            std::string obj = tmp();
+            line("LuzDict* " + obj + " = luz_dict_new();");
+            if (n->args.size() == 1) {
+                std::string count = expr(n->args[0].get());
+                std::string i = tmp();
+                line("long long " + i + " = 0;");
+                line("while (" + i + " < " + count + ") {");
+                indent_++;
+                line("luz_dict_set_int(" + obj + ", luz_idx_key(" + i + "), " + i + ");");
+                line(i + "++;");
+                indent_--;
+                line("}");
+            } else if (n->args.size() >= 2) {
+                std::string start = expr(n->args[0].get());
+                std::string end   = expr(n->args[1].get());
+                std::string step  = n->args.size() >= 3 ? expr(n->args[2].get()) : "1LL";
+                std::string i  = tmp();
+                std::string ki = tmp();
+                line("long long " + i + " = " + start + ";");
+                line("long long " + ki + " = 0;");
+                line("while (" + i + " < " + end + ") {");
+                indent_++;
+                line("luz_dict_set_int(" + obj + ", luz_idx_key(" + ki + "), " + i + ");");
+                line(i + " += " + step + ";");
+                line(ki + "++;");
+                indent_--;
+                line("}");
+            }
+            return obj;
+        }
+        // append / pop
+        if (n->func == "append" && n->args.size() >= 2) {
+            std::string list = expr(n->args[0].get());
+            std::string val  = expr(n->args[1].get());
+            line("luz_list_append((LuzDict*)" + list + ", " + val + ");");
+            return "";
+        }
+        if (n->func == "pop" && !n->args.empty()) {
+            std::string list = expr(n->args[0].get());
+            return "luz_list_pop((LuzDict*)" + list + ")";
+        }
         // Constructor
         if (classes_.count(n->func)) {
             std::string obj = tmp();
@@ -621,12 +699,28 @@ private:
         return v;
     }
 
+    std::string emit_list_expr(HirList* n) {
+        std::string v = tmp();
+        line("LuzDict* " + v + " = luz_dict_new();");
+        for (int i = 0; i < (int)n->elements.size(); ++i) {
+            std::string elem = expr(n->elements[i].get());
+            std::string et   = infer_type(n->elements[i].get());
+            std::string key  = "\"" + std::to_string(i) + "\"";
+            line(dict_setter(et) + "(" + v + ", " + key + ", " + elem + ");");
+        }
+        return v;
+    }
+
     std::string emit_index_expr(HirIndex* n) {
         std::string coll = expr(n->collection.get());
         std::string idx  = expr(n->index.get());
         std::string rt   = c_type(n->type);
         if (rt == "void") rt = "char*";
-        return dict_getter(rt) + "((LuzDict*)" + coll + ", " + idx + ")";
+        // Integer indices must be converted to string keys for the dict runtime
+        std::string key = infer_type(n->index.get()) == "long long"
+                          ? "luz_idx_key(" + idx + ")"
+                          : idx;
+        return dict_getter(rt) + "((LuzDict*)" + coll + ", " + key + ")";
     }
 
     // Get the class name for self / object variables
@@ -644,6 +738,7 @@ private:
 
     std::unordered_map<std::string, std::string> class_of_var_; // var → class name
     std::unordered_map<std::string, std::string> func_ret_;    // func name → C return type
+    std::unordered_set<std::string>              nested_emitted_; // nested func names already emitted
 
     // ── Statements ────────────────────────────────────────────────────────────
 
@@ -797,7 +892,11 @@ private:
         std::string idx  = expr(n->index.get());
         std::string v    = expr(n->value.get());
         std::string vt   = infer_type(n->value.get());
-        line(dict_setter(vt) + "((LuzDict*)" + coll + ", " + idx + ", " + v + ");");
+        // Integer indices must be converted to string keys for the dict runtime
+        std::string key = infer_type(n->index.get()) == "long long"
+                          ? "luz_idx_key(" + idx + ")"
+                          : idx;
+        line(dict_setter(vt) + "((LuzDict*)" + coll + ", " + key + ", " + v + ");");
     }
 
     // ── Functions ─────────────────────────────────────────────────────────────
@@ -898,8 +997,24 @@ private:
         tmp_id_      = saved_tmp;
     }
 
-    void emit_lambda_local(HirFuncDef* /*n*/) {
-        // Nested lambdas not supported — should be pre-hoisted by HIR
+    // Recursively collect HirFuncDef nodes nested inside function bodies.
+    void collect_nested_funcs(const HirBlock& body, std::vector<HirFuncDef*>& out) {
+        for (auto& n : body) {
+            if (n->kind == HirKind::FuncDef) {
+                out.push_back(static_cast<HirFuncDef*>(n.get()));
+            } else if (n->kind == HirKind::If) {
+                auto* i = static_cast<HirIf*>(n.get());
+                collect_nested_funcs(i->then_block, out);
+                collect_nested_funcs(i->else_block, out);
+            } else if (n->kind == HirKind::While) {
+                collect_nested_funcs(static_cast<HirWhile*>(n.get())->body, out);
+            }
+        }
+    }
+
+    void emit_lambda_local(HirFuncDef* n) {
+        // Already emitted as a top-level function in the pre-pass; register as callable.
+        lambdas_.insert(n->name);
     }
 };
 
