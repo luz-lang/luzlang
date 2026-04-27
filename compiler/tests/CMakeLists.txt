@@ -7,6 +7,7 @@ add_executable(luz_tests
     test_typechecker.cpp
     test_hir.cpp
     test_e2e.cpp
+    test_ccodegen.cpp
 )
 
 target_include_directories(luz_tests PRIVATE
@@ -25,6 +26,7 @@ target_sources(luz_tests PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/typechecker.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/hir.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/../src/codegen.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/../src/ccodegen.cpp
 )
 
 include(CTest)
