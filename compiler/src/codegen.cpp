@@ -1437,9 +1437,23 @@ private:
     // ── luz_powi helper ───────────────────────────────────────────────────────
 
     void emit_powi_helper() {
+        // The error message string has 35 bytes including the trailing NUL,
+        // matching the C-runtime version of luz_powi in luz_rt.c. Both
+        // backends route negative-exponent calls through @luz_alert_throw
+        // so attempt/rescue blocks see a uniform fault (issue #97).
         final_out_ <<
+            "\n@.luz_powi_neg_msg = private unnamed_addr constant [35 x i8]"
+            " c\"negative exponent in integer power\\00\", align 1\n"
             "\ndefine i64 @luz_powi(i64 %base, i64 %exp) {\n"
             "entry:\n"
+            "  %neg_chk = icmp slt i64 %exp, 0\n"
+            "  br i1 %neg_chk, label %pw_neg, label %pw_init\n"
+            "pw_neg:\n"
+            "  %msg = getelementptr inbounds [35 x i8],"
+            " [35 x i8]* @.luz_powi_neg_msg, i64 0, i64 0\n"
+            "  call void @luz_alert_throw(i8* %msg)\n"
+            "  unreachable\n"
+            "pw_init:\n"
             "  %result.addr = alloca i64\n"
             "  %base2.addr  = alloca i64\n"
             "  %exp2.addr   = alloca i64\n"

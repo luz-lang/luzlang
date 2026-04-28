@@ -188,6 +188,14 @@ const char* luz_get_error(void) {
 // ── Math ──────────────────────────────────────────────────────────────────────
 
 long long luz_powi(long long base, long long exp) {
+    // Without this guard, the integer ** operator silently returned 1 for
+    // any negative exponent because the `while (exp-- > 0)` loop never
+    // entered (issue #97). 2 ** -1 mathematically is 0.5, not 1; emit a
+    // structured fault instead so callers can attempt/rescue or die loudly.
+    if (exp < 0) {
+        luz_alert_throw("negative exponent in integer power");
+        return 0;
+    }
     long long result = 1;
     while (exp-- > 0) result *= base;
     return result;
