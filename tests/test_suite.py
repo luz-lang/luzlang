@@ -221,6 +221,23 @@ class TestArithmetic:
     def test_power(self):
         assert out("write(2 ** 10)") == ["1024"]
 
+    def test_power_zero_exponent(self):
+        # x ** 0 = 1 for any base — the existing behaviour, pinned here so
+        # the negative-exponent fix doesn't regress the boundary case.
+        assert out("write(7 ** 0)") == ["1"]
+
+    def test_power_negative_exponent_raises_runtime_fault(self):
+        # Regression for #97: 2 ** -1 used to silently return 1 (the
+        # `while (exp-- > 0)` loop never entered for negative exp). Now
+        # both backends route through @luz_alert_throw so attempt/rescue
+        # can catch it and unhandled cases die loudly.
+        result = run_fails("write(2 ** -1)")
+        # luz_alert_throw writes "Error: <msg>" to stderr when the fault
+        # bubbles to top-level.
+        assert "negative exponent" in result.stderr.lower(), (
+            f"expected 'negative exponent' in stderr; got:\n{result.stderr}"
+        )
+
     def test_negative_numbers(self):
         assert out("write(0 - 5 + 3)") == ["-2"]
 
