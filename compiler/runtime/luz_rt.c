@@ -77,7 +77,16 @@ static void dict_grow(LuzDict* d) {
 
 static void dict_set(LuzDict* d, const char* key, LuzVal val) {
     LuzEntry* e = dict_find(d, key);
-    if (e) { e->val = val; return; }
+    if (e) {
+        /* Free the previous string heap allocation before overwriting.
+         * Without this, every dict_set("key", str) on an existing
+         * string-tagged entry leaks the previous strdup'd buffer
+         * (issue #98). The tag check matches what dict_remove() does
+         * a few lines below. */
+        if (e->val.tag == 4) free(e->val.s);
+        e->val = val;
+        return;
+    }
     dict_grow(d);
     d->entries[d->size].key = strdup(key);
     d->entries[d->size].val = val;
