@@ -197,7 +197,8 @@ private:
             "extern int       luz_to_bool(const char*);\n"
             "extern char*     luz_idx_key(long long);\n"
             "extern void      luz_list_append(LuzDict*,long long);\n"
-            "extern long long luz_list_pop(LuzDict*);\n\n";
+            "extern long long luz_list_pop(LuzDict*);\n"
+            "extern void      luz_list_sort(LuzDict*);\n\n";
     }
 
     // ── Class registry ────────────────────────────────────────────────────────
@@ -397,6 +398,7 @@ private:
             auto* c = static_cast<HirCall*>(n);
             if (classes_.count(c->func)) return "LuzDict*";
             if (c->func == "range") return "LuzDict*";
+            if (c->func == "type" || c->func == "typeof") return "char*";
             std::string rt = c->return_type;
             if (rt.empty() || rt == "unknown") {
                 auto fit = func_ret_.find(c->func);
@@ -405,8 +407,32 @@ private:
             }
             return c_type(rt);
         }
+        case HirKind::FieldLoad: {
+            auto* fl = static_cast<HirFieldLoad*>(n);
+            std::string ft = c_type(fl->type);
+            if ((ft == "long long" || ft == "void") &&
+                (fl->type.empty() || fl->type == "unknown")) {
+                std::string cls = load_class_name(fl->obj.get());
+                ft = resolve_field_type(cls, fl->field);
+            }
+            if (ft == "void") ft = "char*";
+            return ft;
+        }
         case HirKind::Dict: return "LuzDict*";
         case HirKind::List: return "LuzDict*";
+        case HirKind::ObjectCall: {
+            auto* oc = static_cast<HirObjectCall*>(n);
+            if (!oc->return_type.empty() && oc->return_type != "unknown")
+                return c_type(oc->return_type);
+            std::string cls = load_class_name(oc->obj.get());
+            std::string owner = resolve_method_owner(cls, oc->method);
+            auto cit = classes_.find(owner);
+            if (cit != classes_.end()) {
+                auto rit = cit->second.method_ret.find(oc->method);
+                if (rit != cit->second.method_ret.end()) return rit->second;
+            }
+            return "long long";
+        }
         default: return "long long";
         }
     }
@@ -579,6 +605,24 @@ private:
         if (n->func == "to_bool") {
             std::string v = n->args.empty() ? "\"\"" : expr(n->args[0].get());
             return "luz_to_bool(" + v + ")";
+        }
+        // sort(list)
+        if (n->func == "sort" && !n->args.empty()) {
+            line("luz_list_sort((LuzDict*)" + expr(n->args[0].get()) + ");");
+            return "";
+        }
+        // type(x) / typeof(x)
+        if ((n->func == "type" || n->func == "typeof") && !n->args.empty()) {
+            std::string t = infer_type(n->args[0].get());
+            std::string type_name;
+            if      (t == "long long") type_name = "\"int\"";
+            else if (t == "double")    type_name = "\"float\"";
+            else if (t == "int")       type_name = "\"bool\"";
+            else if (t == "char*")     type_name = "\"string\"";
+            else                       type_name = "\"object\"";
+            std::string v = expr(n->args[0].get());
+            (void)v;
+            return type_name;
         }
         // range()
         if (n->func == "range") {
@@ -874,7 +918,6 @@ private:
         indent_--;
         line("} else {");
         indent_++;
-        line("luz_pop_rescue();");
         if (!n->error_var.empty()) {
             line("const char* " + n->error_var + " = luz_get_error();");
             locals_[n->error_var] = "char*";

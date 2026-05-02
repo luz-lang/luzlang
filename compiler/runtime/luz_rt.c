@@ -235,6 +235,23 @@ void luz_list_append(LuzDict* list, long long val) {
     luz_dict_set_int(list, key, val);
 }
 
+void luz_list_sort(LuzDict* list) {
+    long long n = luz_dict_len(list);
+    for (long long i = 0; i < n - 1; i++) {
+        for (long long j = 0; j < n - i - 1; j++) {
+            char ka[32], kb[32];
+            snprintf(ka, sizeof(ka), "%lld", j);
+            snprintf(kb, sizeof(kb), "%lld", j + 1);
+            long long a = luz_dict_get_int(list, ka);
+            long long b = luz_dict_get_int(list, kb);
+            if (a > b) {
+                luz_dict_set_int(list, ka, b);
+                luz_dict_set_int(list, kb, a);
+            }
+        }
+    }
+}
+
 long long luz_list_pop(LuzDict* list) {
     long long n = luz_dict_len(list);
     if (n == 0) { luz_alert_throw("pop from empty list"); return 0; }
