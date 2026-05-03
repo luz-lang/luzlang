@@ -5,6 +5,33 @@ Format: `## [version] - YYYY-MM-DD` followed by categorized entries.
 
 ---
 
+## [2.0.0] - 2026-04-28
+
+### Fixed
+
+**C codegen — correctness**
+- List literals (`[1, 2, 3]`) now compile correctly — `HirList` was unhandled and silently emitted `0` (#89)
+- List indexing (`list[n]`) no longer crashes — integer indices are now converted to string keys via `luz_idx_key()` before dict lookup (#90)
+- Nested function definitions inside functions are no longer silently dropped — a pre-pass hoists them to top-level with proper forward declarations (#91)
+- `range()` builtin now works — emits a `LuzDict*` with sequential integer keys (#92)
+- `append()` and `pop()` builtins now work — added `luz_list_append` / `luz_list_pop` to the runtime (#93)
+- `sort()`, `type()`, `typeof()` builtins no longer produce a TCC linker error (#94)
+- Method return values no longer lose their type — added `HirObjectCall` and `HirFieldLoad` cases to `infer_type()`, fixing string/float methods (#95)
+- Nested `attempt`/`rescue` blocks no longer corrupt the rescue stack — removed the duplicate `luz_pop_rescue()` call from the rescue branch (#100)
+- Functions whose body returns a float or string `BinOp` expression are now forward-declared with the correct return type instead of `long long` (#99)
+
+**Runtime (`luz_rt.c`)**
+- `luz_powi()` now raises a structured fault on negative exponents instead of silently returning `1` (#97)
+- `dict_set` no longer leaks the previous string heap allocation when overwriting an existing string entry (#98)
+
+### Added
+
+- `luz_idx_key(long long)` — integer-to-string-key helper used by list indexing and `range()`
+- `luz_list_sort(LuzDict*)` — bubble sort over integer-valued list entries
+- `sort()`, `type()`, `typeof()` handlers in C codegen
+
+---
+
 ## [2.0beta] - 2026-04-26
 
 ### Added
